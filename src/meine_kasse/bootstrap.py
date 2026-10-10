@@ -7,6 +7,7 @@ from meine_kasse.application.services.auth_service import AuthService
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.master_data_service import MasterDataService
+from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
 from meine_kasse.infrastructure.database.migrate import upgrade_database
 from meine_kasse.infrastructure.database.session import Database
@@ -22,6 +23,7 @@ class Container:
     users: UserService
     booking_control: BookingControlService
     bookings: BookingService
+    planning: PlanningService
 
 
 def build_container(database_file: Path) -> Container:
@@ -39,4 +41,5 @@ def build_container(database_file: Path) -> Container:
         users=UserService(uow_factory),
         booking_control=BookingControlService(uow_factory),
         bookings=BookingService(uow_factory),
+        planning=PlanningService(uow_factory),
     )

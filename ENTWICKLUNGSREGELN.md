@@ -55,7 +55,11 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 8. Die Verteilung auf Monate, Quartale, unregelmäßige Beträge und Rückstellungen innerhalb des Jahresansatzes wird in der Planung geändert, nicht per Buchung. Die Summe der Monatsplanwerte darf den wirksamen Jahresansatz nicht überschreiten.
 9. Planänderungen sind nur in offenen Monaten möglich und werden im Audit-Protokoll festgehalten.
 10. Der Monatsplan sperrt nicht, Abweichungen werden nur angezeigt.
-11. Kostenstellen der Art „ohne Plan“ unterliegen keiner Sperre und führen nur Soll- und Haben-Summen.
+11. Kostenstellen der Art „ohne Plan“ unterliegen keiner Sperre und führen nur Soll- und Haben-Summen. Für sie gibt es keine Planung.
+12. Die Summe der Monatsplanwerte darf den wirksamen Jahresansatz (Basisansatz + Ansatzumbuchungen) nicht übersteigen. Planwerte und Rückstellungsüberträge sind nie negativ.
+13. Abgeschlossene Monate und Jahre sind in der Planung gesperrt. Ein unverändertes Speichern ist weiterhin möglich.
+14. Quartals- und gleichmäßige Verteilung sind Eingabehilfen. Gespeichert werden immer Monatswerte, die Art (Monatlich, Quartal, Unregelmäßig, Rückstellung) ist nur eine Kennzeichnung.
+15. Planänderungen werden mit den geänderten Feldern im Audit-Protokoll festgehalten.
 
 ## 5. Sicherheit und Datenschutz
 

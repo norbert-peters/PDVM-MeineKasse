@@ -29,6 +29,10 @@ class BookingControlDialog(MasterEditDialog):
         self.month_combo.setCurrentIndex(control.current_month - 1)
         self.planning_check = QCheckBox("Planung aktiviert (Ansatzsperre)")
         self.planning_check.setChecked(control.planning_enabled)
+        self.planning_check.setToolTip(
+            "Bei aktiver Planung ist der Haushaltsansatz fix und Ausgaben werden gegen den "
+            "Haushaltsrest geprüft. Ansätze vorher in der Kostenstellenplanung erfassen."
+        )
 
         self.form.addRow("Aktuelles Buchungsjahr:", self.year_spin)
         self.form.addRow("Aktueller Buchungsmonat:", self.month_combo)

@@ -89,6 +89,17 @@ class SqlPlanRepository:
         )
         return [_monthly_to_entity(model) for model in self._session.scalars(statement)]
 
+    def save_monthly_plan(self, plan: MonthlyPlan) -> None:
+        model = self._session.get(MonthlyPlanModel, plan.id)
+        if model is None:
+            model = MonthlyPlanModel(id=plan.id, cost_center_plan_id=plan.cost_center_plan_id)
+            self._session.add(model)
+        model.month = plan.month
+        model.plan_cents = plan.plan_cents
+        model.reserve_plan_cents = plan.reserve_plan_cents
+        model.plan_mode = plan.plan_mode.value
+        self._session.flush()
+
     def get_actual(self, cost_center_id: str, year: int, month: int) -> MonthlyActual | None:
         statement = select(MonthlyActualModel).where(
             MonthlyActualModel.cost_center_id == cost_center_id,

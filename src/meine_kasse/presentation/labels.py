@@ -2,7 +2,14 @@
 
 from datetime import date
 
-from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind
+from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind, PlanMode
+
+PLAN_MODE_LABELS = {
+    PlanMode.MONTHLY: "Monatlich",
+    PlanMode.QUARTERLY: "Quartal",
+    PlanMode.IRREGULAR: "Unregelmäßig",
+    PlanMode.RESERVE: "Rückstellung",
+}
 
 BOOKING_TYPE_LABELS = {
     BookingType.COST_CENTER_TO_ACCOUNT: "Kostenstelle → Konto",

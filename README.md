@@ -21,9 +21,12 @@ Umgesetzt (erste Schritte):
 - Buchungen: Erfassen, Ändern und Löschen in offenen Monaten, Storno per Minusbuchung, alle drei Buchungsarten (Kostenstelle → Konto, Konto → Konto, Ansatzumbuchung)
 - Plan-Ist-Fortschreibung und Ansatzsperre in einer Transaktion mit der Buchung, Neuaufbau der Projektionen aus den Buchungen
 - Buchungssteuerung (aktueller Buchungsmonat, Planung ein/aus) und Buchungsliste mit sichtbarem Monatsstatus (frei/fix)
-- Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü, Stammdaten- und Buchungsdialoge
+- Planung je Kostenstelle: Haushaltsansatz, Monatswerte (Plan-Ansatz, Art, Rückstellung Plan), Rückstellungsüberträge, Soll-/Ist-Vergleich je Monat; Eingabehilfen „gleichmäßig verteilen“ und „Quartalsbeträge“
+- Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü, Stammdaten-, Buchungs- und Planungsdialoge
 
-Noch nicht umgesetzt: Planungsdialog (Basisansatz und Monatswerte erfassen), Monats-/Jahresabschluss mit Signatur, Auswertungen. Solange es keinen Planungsdialog gibt, sollte die Planung in der Buchungssteuerung **ausgeschaltet** bleiben: Bei aktiver Planung sperrt die Ansatzsperre jede Ausgabe auf Kostenstellen ohne erfassten Ansatz.
+Noch nicht umgesetzt: Monats-/Jahresabschluss mit Signatur, Auswertungen.
+
+Empfohlene Reihenfolge beim Einrichten: Kostenstellen anlegen, Ansätze und Monatswerte in der Kostenstellenplanung erfassen, danach in der Buchungssteuerung die Planung aktivieren. Ab dann ist der Haushaltsansatz fix und ändert sich nur durch Ansatzumbuchung. Eine Kostenstelle, die erst nach der Aktivierung angelegt wird, erhält ihren Ansatz über eine Ansatzumbuchung (z. B. aus einer Kostenstelle „Haushaltsreserve“).
 
 Hinweis: Der Kontostand ist der Saldo aus den Buchungen. Anfangsbestände sind noch nicht erfasst (offene fachliche Entscheidung).
 
