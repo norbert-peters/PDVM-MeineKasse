@@ -1,0 +1,83 @@
+import os
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtWidgets import QApplication, QDialogButtonBox  # noqa: E402
+
+from meine_kasse.application.services.auth_service import AuthService, LoginResult  # noqa: E402
+from meine_kasse.presentation.dialogs.change_password_dialog import (  # noqa: E402
+    ChangePasswordDialog,
+)
+from meine_kasse.presentation.dialogs.first_user_dialog import FirstUserDialog  # noqa: E402
+from meine_kasse.presentation.dialogs.login_dialog import LoginDialog  # noqa: E402
+from meine_kasse.presentation.main_window import MainWindow  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def qapp() -> QApplication:
+    return QApplication.instance() or QApplication([])  # type: ignore[return-value]
+
+
+def test_login_dialog_shows_neutral_message_on_failure(
+    qapp: QApplication, auth: AuthService
+) -> None:
+    auth.create_user(name="anna", last_name="", first_name="", initial_password="Erstpasswort-1")
+    dialog = LoginDialog(auth)
+    dialog.name_edit.setText("anna")
+    dialog.password_edit.setText("falsch-falsch")
+    dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+
+    assert dialog.error_label.text() == "Anmeldename oder Passwort ist falsch."
+    assert dialog.login_result is None
+    assert dialog.password_edit.text() == ""
+
+
+def test_login_dialog_success_returns_result(qapp: QApplication, auth: AuthService) -> None:
+    auth.create_user(name="anna", last_name="", first_name="", initial_password="Erstpasswort-1")
+    dialog = LoginDialog(auth)
+    dialog.name_edit.setText("anna")
+    dialog.password_edit.setText("Erstpasswort-1")
+    dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+
+    assert dialog.login_result is not None
+    assert dialog.login_result.must_change_password is True
+
+
+def test_change_password_dialog_checks_repetition_and_changes(
+    qapp: QApplication, auth: AuthService
+) -> None:
+    user_id = auth.create_user(
+        name="anna", last_name="", first_name="", initial_password="Erstpasswort-1"
+    )
+    dialog = ChangePasswordDialog(auth, user_id, forced=True)
+    dialog.old_edit.setText("Erstpasswort-1")
+    dialog.new_edit.setText("Neues-Passwort-2")
+    dialog.repeat_edit.setText("Anderes-Passwort-3")
+    dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+    assert "stimmen nicht überein" in dialog.error_label.text()
+
+    dialog.repeat_edit.setText("Neues-Passwort-2")
+    dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+    assert auth.login("anna", "Neues-Passwort-2").must_change_password is False
+
+
+def test_first_user_dialog_creates_user(qapp: QApplication, auth: AuthService) -> None:
+    dialog = FirstUserDialog(auth)
+    dialog.name_edit.setText("anna")
+    dialog.password_edit.setText("Erstpasswort-1")
+    dialog.repeat_edit.setText("Erstpasswort-1")
+    dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+    assert auth.has_users()
+
+
+def test_main_window_has_menu_with_disabled_planned_entries(qapp: QApplication) -> None:
+    window = MainWindow(LoginResult("id", "Anna Muster", False))
+    titles = [action.text() for action in window.menuBar().actions()]
+    assert titles == ["&Datei", "&Stammdaten", "&Buchungen", "&Planung", "&Abschluss", "&Hilfe"]
+
+    booking_menu = window.menuBar().actions()[2].menu()
+    assert booking_menu is not None
+    assert all(not action.isEnabled() for action in booking_menu.actions())
+    assert "Anna Muster" in window.statusBar().currentMessage()

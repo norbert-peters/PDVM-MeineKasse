@@ -1,0 +1,81 @@
+"""Ansatzsperre und Ansatzumbuchung (siehe Architekturvorgabe 2.7)."""
+
+from dataclasses import dataclass
+
+from meine_kasse.domain.enums import CostCenterKind
+from meine_kasse.domain.errors import BudgetExceededError, ValidationError
+from meine_kasse.domain.value_objects.money import format_euro
+
+
+@dataclass(frozen=True, slots=True)
+class BudgetPosition:
+    """Stand einer Kostenstelle im Jahr, alle Werte in Cent."""
+
+    annual_budget_cents: int
+    movement_cents: int
+    distributed_cents: int = 0
+
+    @property
+    def remaining_cents(self) -> int:
+        """Haushaltsrest = wirksamer Jahresansatz - Ist-Bewegung (Soll - Haben)."""
+        return self.annual_budget_cents - self.movement_cents
+
+
+def is_checked(planning_enabled: bool, kind: CostCenterKind) -> bool:
+    return planning_enabled and kind is CostCenterKind.STANDARD
+
+
+def check_actual_booking(
+    position: BudgetPosition,
+    movement_delta_cents: int,
+    *,
+    planning_enabled: bool,
+    kind: CostCenterKind,
+) -> None:
+    """Sperrt eine Ist-Buchung, die den Haushaltsrest unter 0 bringen würde.
+
+    Entlastende Buchungen (Bewegung sinkt oder bleibt gleich) werden nie gesperrt.
+    """
+    if not is_checked(planning_enabled, kind) or movement_delta_cents <= 0:
+        return
+    rest_after = position.remaining_cents - movement_delta_cents
+    if rest_after < 0:
+        shortfall = -rest_after
+        raise BudgetExceededError(
+            f"Der Haushaltsrest reicht nicht aus: Es fehlen {format_euro(shortfall)}. "
+            "Bitte zuerst Ansatz auf diese Kostenstelle umbuchen.",
+            shortfall,
+        )
+
+
+def validate_budget_transfer_allowed(
+    *,
+    planning_enabled: bool,
+    kinds: tuple[CostCenterKind, CostCenterKind],
+) -> None:
+    if not planning_enabled:
+        raise ValidationError("Ansatzumbuchungen sind nur bei aktivierter Planung möglich.")
+    if any(kind is not CostCenterKind.STANDARD for kind in kinds):
+        raise ValidationError(
+            "Ansatzumbuchungen sind nur zwischen Kostenstellen mit Planung möglich."
+        )
+
+
+def check_budget_change(position: BudgetPosition, budget_delta_cents: int) -> None:
+    """Prüft die Änderung des Jahresansatzes einer Kostenstelle.
+
+    Ein sinkender Ansatz darf weder unter 0 noch unter die Ist-Bewegung oder den bereits
+    auf Monate verteilten Ansatz fallen.
+    """
+    if budget_delta_cents >= 0:
+        return
+    budget_after = position.annual_budget_cents + budget_delta_cents
+    lowest_allowed = max(0, position.movement_cents, position.distributed_cents)
+    if budget_after < lowest_allowed:
+        shortfall = lowest_allowed - budget_after
+        available = max(0, position.annual_budget_cents - lowest_allowed)
+        raise BudgetExceededError(
+            f"Der abzugebende Ansatz ist zu hoch: Es können höchstens {format_euro(available)} "
+            "umgebucht werden. Bei verteiltem Ansatz zuerst die Monatsplanung verringern.",
+            shortfall,
+        )

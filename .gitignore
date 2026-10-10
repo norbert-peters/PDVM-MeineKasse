@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Produktivdaten und Sicherungen gehören nicht in die Versionsverwaltung
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+data/
+logs/

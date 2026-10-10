@@ -1,0 +1,1 @@
+"""Werteobjekte: Geldbeträge, Prozentwerte, IBAN."""
