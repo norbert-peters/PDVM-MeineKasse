@@ -1,9 +1,12 @@
 from collections.abc import Callable, Iterator
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from meine_kasse.application.services.auth_service import AuthService
+from meine_kasse.application.services.booking_control_service import BookingControlService
+from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.user_service import UserService
 from meine_kasse.domain.repositories import UnitOfWork
@@ -42,3 +45,16 @@ def master_data(uow_factory: Callable[[], UnitOfWork]) -> MasterDataService:
 @pytest.fixture
 def users(uow_factory: Callable[[], UnitOfWork]) -> UserService:
     return UserService(uow_factory)
+
+
+TODAY = date(2026, 5, 15)
+
+
+@pytest.fixture
+def booking_control(uow_factory: Callable[[], UnitOfWork]) -> BookingControlService:
+    return BookingControlService(uow_factory, today=lambda: TODAY)
+
+
+@pytest.fixture
+def bookings(uow_factory: Callable[[], UnitOfWork]) -> BookingService:
+    return BookingService(uow_factory, today=lambda: TODAY)

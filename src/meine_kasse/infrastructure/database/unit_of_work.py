@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 from meine_kasse.infrastructure.database.repositories import (
     SqlAccountRepository,
     SqlAuditRepository,
+    SqlBookingControlRepository,
+    SqlBookingRepository,
+    SqlClosureRepository,
     SqlCostCenterRepository,
+    SqlPlanRepository,
     SqlUserRepository,
 )
 
@@ -19,6 +23,10 @@ class SqlAlchemyUnitOfWork:
     cost_centers: SqlCostCenterRepository
     accounts: SqlAccountRepository
     audit: SqlAuditRepository
+    booking_control: SqlBookingControlRepository
+    closures: SqlClosureRepository
+    bookings: SqlBookingRepository
+    plans: SqlPlanRepository
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
@@ -31,6 +39,10 @@ class SqlAlchemyUnitOfWork:
         self.cost_centers = SqlCostCenterRepository(session)
         self.accounts = SqlAccountRepository(session)
         self.audit = SqlAuditRepository(session)
+        self.booking_control = SqlBookingControlRepository(session)
+        self.closures = SqlClosureRepository(session)
+        self.bookings = SqlBookingRepository(session)
+        self.plans = SqlPlanRepository(session)
         return self
 
     def __exit__(

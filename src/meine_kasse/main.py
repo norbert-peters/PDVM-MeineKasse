@@ -31,7 +31,12 @@ def run(app: QApplication, container: Container) -> int:
                 continue
 
         window = MainWindow(
-            login, auth=container.auth, master_data=container.master_data, users=container.users
+            login,
+            auth=container.auth,
+            master_data=container.master_data,
+            users=container.users,
+            booking_control=container.booking_control,
+            bookings=container.bookings,
         )
         window.show()
         app.exec()

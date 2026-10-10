@@ -6,6 +6,7 @@ Vorzeichen und erfasste Seite werden nie normalisiert oder getauscht.
 
 from dataclasses import dataclass
 
+from meine_kasse.domain.entities.booking import Booking
 from meine_kasse.domain.enums import BookingType, ObjectKind, Side
 from meine_kasse.domain.errors import ValidationError
 
@@ -75,3 +76,111 @@ def balance_effect(side: Side, amount_cents: int) -> int:
 def movement_effect(side: Side, amount_cents: int) -> int:
     """Wirkung auf die Ist-Bewegung (Soll - Haben)."""
     return -balance_effect(side, amount_cents)
+
+
+@dataclass(frozen=True, slots=True)
+class ActualDelta:
+    """Änderung der Ist-Summen einer Kostenstelle in einem Monat (Soll und Haben getrennt)."""
+
+    cost_center_id: str
+    year: int
+    month: int
+    debit_delta_cents: int
+    credit_delta_cents: int
+
+    @property
+    def movement_delta_cents(self) -> int:
+        return self.debit_delta_cents - self.credit_delta_cents
+
+
+@dataclass(frozen=True, slots=True)
+class BudgetDelta:
+    """Änderung des wirksamen Jahresansatzes einer Kostenstelle."""
+
+    cost_center_id: str
+    year: int
+    delta_cents: int
+
+
+@dataclass(frozen=True, slots=True)
+class BookingEffects:
+    actuals: tuple[ActualDelta, ...] = ()
+    budgets: tuple[BudgetDelta, ...] = ()
+
+    def negated(self) -> "BookingEffects":
+        """Die Gegenwirkung, z. B. beim Ändern oder Löschen einer Buchung."""
+        return BookingEffects(
+            actuals=tuple(
+                ActualDelta(
+                    delta.cost_center_id,
+                    delta.year,
+                    delta.month,
+                    -delta.debit_delta_cents,
+                    -delta.credit_delta_cents,
+                )
+                for delta in self.actuals
+            ),
+            budgets=tuple(
+                BudgetDelta(delta.cost_center_id, delta.year, -delta.delta_cents)
+                for delta in self.budgets
+            ),
+        )
+
+    def combined(self, other: "BookingEffects") -> "BookingEffects":
+        """Summiert zwei Wirkungen. Einträge mit Nettowirkung 0 entfallen."""
+        actual_sums: dict[tuple[str, int, int], list[int]] = {}
+        for actual in (*self.actuals, *other.actuals):
+            entry = actual_sums.setdefault(
+                (actual.cost_center_id, actual.year, actual.month), [0, 0]
+            )
+            entry[0] += actual.debit_delta_cents
+            entry[1] += actual.credit_delta_cents
+        budget_sums: dict[tuple[str, int], int] = {}
+        for budget in (*self.budgets, *other.budgets):
+            key = (budget.cost_center_id, budget.year)
+            budget_sums[key] = budget_sums.get(key, 0) + budget.delta_cents
+        return BookingEffects(
+            actuals=tuple(
+                ActualDelta(cost_center_id, year, month, debit, credit)
+                for (cost_center_id, year, month), (debit, credit) in actual_sums.items()
+                if debit or credit
+            ),
+            budgets=tuple(
+                BudgetDelta(cost_center_id, year, delta)
+                for (cost_center_id, year), delta in budget_sums.items()
+                if delta
+            ),
+        )
+
+
+def effects_of(booking: Booking) -> BookingEffects:
+    """Wirkung einer Buchung auf Plan-Ist-Werte und Ansatz.
+
+    Konten haben keine gespeicherte Wirkung, ihr Saldo wird aus den Buchungen berechnet.
+    Ansatzumbuchungen berühren nur den Ansatz, nie die Ist-Werte.
+    """
+    actuals: list[ActualDelta] = []
+    budgets: list[BudgetDelta] = []
+    for leg in booking.legs:
+        if leg.cost_center_id is None:
+            continue
+        if booking.booking_type is BookingType.BUDGET_TRANSFER:
+            budgets.append(
+                BudgetDelta(
+                    leg.cost_center_id,
+                    booking.fiscal_year,
+                    balance_effect(leg.side, booking.amount_cents),
+                )
+            )
+        else:
+            is_debit = leg.side is Side.DEBIT
+            actuals.append(
+                ActualDelta(
+                    leg.cost_center_id,
+                    booking.fiscal_year,
+                    booking.fiscal_month,
+                    booking.amount_cents if is_debit else 0,
+                    0 if is_debit else booking.amount_cents,
+                )
+            )
+    return BookingEffects(tuple(actuals), tuple(budgets))

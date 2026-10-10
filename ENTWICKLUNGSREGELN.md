@@ -39,6 +39,9 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 13. Es gibt genau drei Buchungsarten: Kostenstelle → Konto, Konto → Konto, Ansatz Kostenstelle → Ansatz Kostenstelle. Zulässige Kombinationen sind zentral definiert und getestet.
 14. Konten und Kostenstellen werden nicht als Einnahme oder Ausgabe gekennzeichnet; das ergibt sich ausschließlich aus Seite und Vorzeichen der Buchungen.
 15. Es gibt keine Sachkonten. Die Summe der Kontenbewegungen aus Ist-Buchungen muss der Summe der Ist-Bewegungen aller Kostenstellen entsprechen und wird automatisiert geprüft.
+16. Eine Buchung kann bis zum Monatsabschluss geändert oder gelöscht werden. Dabei wird nicht „alt zurück, dann neu“, sondern die **Nettowirkung** gegen die Ansatzsperre geprüft. Eine stornierte Buchung und ein Storno sind nicht änderbar; ein Storno kann gelöscht werden.
+17. Korrekturen in abgeschlossenen Monaten erfolgen durch Storno: eine Minusbuchung auf derselben Seite im offenen Zeitraum, verknüpft über `reversal_of_id`. Ein Storno kann nicht erneut storniert werden.
+18. Neue Buchungen sind nur auf aktive Konten und Kostenstellen möglich; ein Storno darf auch auf inzwischen deaktivierte Stellen buchen.
 
 ## 4. Planung und Ansatzsperre
 

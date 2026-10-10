@@ -7,6 +7,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialogButtonBox  # noqa: E402
 
 from meine_kasse.application.services.auth_service import AuthService, LoginResult  # noqa: E402
+from meine_kasse.application.services.booking_control_service import (  # noqa: E402
+    BookingControlService,
+)
+from meine_kasse.application.services.booking_service import BookingService  # noqa: E402
 from meine_kasse.application.services.master_data_service import MasterDataService  # noqa: E402
 from meine_kasse.application.services.user_service import UserService  # noqa: E402
 from meine_kasse.presentation.dialogs.change_password_dialog import (  # noqa: E402
@@ -74,24 +78,40 @@ def test_first_user_dialog_creates_user(qapp: QApplication, auth: AuthService) -
     assert auth.has_users()
 
 
-def test_main_window_menu_enables_master_data_and_keeps_planned_entries_disabled(
+def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_disabled(
     qapp: QApplication,
     auth: AuthService,
     master_data: MasterDataService,
     users: UserService,
+    booking_control: BookingControlService,
+    bookings: BookingService,
 ) -> None:
     window = MainWindow(
-        LoginResult("id", "Anna Muster", False), auth=auth, master_data=master_data, users=users
+        LoginResult("id", "Anna Muster", False),
+        auth=auth,
+        master_data=master_data,
+        users=users,
+        booking_control=booking_control,
+        bookings=bookings,
     )
     titles = [action.text() for action in window.menuBar().actions()]
     assert titles == ["&Datei", "&Stammdaten", "&Buchungen", "&Planung", "&Abschluss", "&Hilfe"]
 
-    master_menu = window.menuBar().actions()[1].menu()
-    assert master_menu is not None
-    assert [a.text() for a in master_menu.actions()] == ["Kostenstellen", "Konten", "Anwender"]
-    assert all(action.isEnabled() for action in master_menu.actions())
+    def entries(index: int) -> list[tuple[str, bool]]:
+        menu = window.menuBar().actions()[index].menu()
+        assert menu is not None
+        return [(a.text(), a.isEnabled()) for a in menu.actions() if not a.isSeparator()]
 
-    booking_menu = window.menuBar().actions()[2].menu()
-    assert booking_menu is not None
-    assert all(not action.isEnabled() for action in booking_menu.actions())
+    assert entries(1) == [
+        ("Kostenstellen", True),
+        ("Konten", True),
+        ("Anwender", True),
+        ("Buchungssteuerung", True),
+    ]
+    assert entries(2) == [
+        ("Buchungen", True),
+        ("Buchung erfassen", True),
+        ("Ansatzumbuchung", True),
+    ]
+    assert all(not enabled for _text, enabled in entries(3) + entries(4))
     assert "Anna Muster" in window.statusBar().currentMessage()

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meine_kasse.application.services.auth_service import AuthService
+from meine_kasse.application.services.booking_control_service import BookingControlService
+from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.user_service import UserService
 from meine_kasse.infrastructure.database.migrate import upgrade_database
@@ -18,6 +20,8 @@ class Container:
     auth: AuthService
     master_data: MasterDataService
     users: UserService
+    booking_control: BookingControlService
+    bookings: BookingService
 
 
 def build_container(database_file: Path) -> Container:
@@ -33,4 +37,6 @@ def build_container(database_file: Path) -> Container:
         auth=AuthService(uow_factory, Argon2PasswordHasher()),
         master_data=MasterDataService(uow_factory),
         users=UserService(uow_factory),
+        booking_control=BookingControlService(uow_factory),
+        bookings=BookingService(uow_factory),
     )

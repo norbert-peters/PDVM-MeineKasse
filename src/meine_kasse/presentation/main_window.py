@@ -6,9 +6,15 @@ from PySide6.QtWidgets import QLabel, QMainWindow, QMenu, QMessageBox
 
 from meine_kasse import __version__
 from meine_kasse.application.services.auth_service import AuthService, LoginResult
+from meine_kasse.application.services.booking_control_service import BookingControlService
+from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.user_service import UserService
+from meine_kasse.domain.enums import BookingType
 from meine_kasse.presentation.dialogs.account_dialogs import AccountListDialog
+from meine_kasse.presentation.dialogs.booking_control_dialog import BookingControlDialog
+from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
+from meine_kasse.presentation.dialogs.booking_list_dialog import BookingListDialog
 from meine_kasse.presentation.dialogs.cost_center_dialogs import CostCenterListDialog
 from meine_kasse.presentation.dialogs.user_dialogs import UserListDialog
 
@@ -25,6 +31,8 @@ class MainWindow(QMainWindow):
         auth: AuthService,
         master_data: MasterDataService,
         users: UserService,
+        booking_control: BookingControlService,
+        bookings: BookingService,
     ) -> None:
         super().__init__()
         self.logout_requested = False
@@ -32,6 +40,8 @@ class MainWindow(QMainWindow):
         self._auth = auth
         self._master_data = master_data
         self._users = users
+        self._booking_control = booking_control
+        self._bookings = bookings
 
         self.setWindowTitle("Meine Kasse")
         self.resize(900, 600)
@@ -58,8 +68,14 @@ class MainWindow(QMainWindow):
         self._action(master_menu, "Kostenstellen", self._open_cost_centers)
         self._action(master_menu, "Konten", self._open_accounts)
         self._action(master_menu, "Anwender", self._open_users)
+        master_menu.addSeparator()
+        self._action(master_menu, "Buchungssteuerung", self._open_booking_control)
 
-        self._planned_menu(bar.addMenu("&Buchungen"), ["Buchung erfassen", "Ansatzumbuchung"])
+        booking_menu = bar.addMenu("&Buchungen")
+        self._action(booking_menu, "Buchungen", self._open_bookings)
+        self._action(booking_menu, "Buchung erfassen", self._new_booking)
+        self._action(booking_menu, "Ansatzumbuchung", self._new_budget_transfer)
+
         self._planned_menu(bar.addMenu("&Planung"), ["Kostenstellenplanung"])
         self._planned_menu(bar.addMenu("&Abschluss"), ["Monatsabschluss", "Jahresabschluss"])
 
@@ -87,6 +103,30 @@ class MainWindow(QMainWindow):
 
     def _open_users(self) -> None:
         UserListDialog(self._auth, self._users, self._login.user_id, self).exec()
+
+    def _open_booking_control(self) -> None:
+        BookingControlDialog(self._booking_control, self._login.user_id, self).exec()
+
+    def _open_bookings(self) -> None:
+        BookingListDialog(
+            self._bookings,
+            self._master_data,
+            self._booking_control,
+            self._login.user_id,
+            self,
+        ).exec()
+
+    def _new_booking(self) -> None:
+        BookingDialog(self._bookings, self._master_data, self._login.user_id, parent=self).exec()
+
+    def _new_budget_transfer(self) -> None:
+        BookingDialog(
+            self._bookings,
+            self._master_data,
+            self._login.user_id,
+            preset_type=BookingType.BUDGET_TRANSFER,
+            parent=self,
+        ).exec()
 
     def _logout(self) -> None:
         self.logout_requested = True

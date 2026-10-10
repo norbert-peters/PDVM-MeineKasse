@@ -18,9 +18,14 @@ Umgesetzt (erste Schritte):
 - Anlage, Änderung und (De-)Aktivierung von Kostenstellen, Konten und Anwendern mit Dialogen im Menü „Stammdaten“
 - Pflege der Passwörter durch den Anwender (erstmaliges Passwort festlegen, auf erstmaliges Passwort zurücksetzen)
 - Fachregeln als reine Funktionen: Buchungsstellen und Wirkung, Ansatzsperre, Buchungszeitraum, Geld-/Prozentwerte
-- Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü (Fachdialoge folgen)
+- Buchungen: Erfassen, Ändern und Löschen in offenen Monaten, Storno per Minusbuchung, alle drei Buchungsarten (Kostenstelle → Konto, Konto → Konto, Ansatzumbuchung)
+- Plan-Ist-Fortschreibung und Ansatzsperre in einer Transaktion mit der Buchung, Neuaufbau der Projektionen aus den Buchungen
+- Buchungssteuerung (aktueller Buchungsmonat, Planung ein/aus) und Buchungsliste mit sichtbarem Monatsstatus (frei/fix)
+- Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü, Stammdaten- und Buchungsdialoge
 
-Noch nicht umgesetzt: Buchung erfassen, Ansatzumbuchung, Planung, Monats-/Jahresabschluss, Auswertungen.
+Noch nicht umgesetzt: Planungsdialog (Basisansatz und Monatswerte erfassen), Monats-/Jahresabschluss mit Signatur, Auswertungen. Solange es keinen Planungsdialog gibt, sollte die Planung in der Buchungssteuerung **ausgeschaltet** bleiben: Bei aktiver Planung sperrt die Ansatzsperre jede Ausgabe auf Kostenstellen ohne erfassten Ansatz.
+
+Hinweis: Der Kontostand ist der Saldo aus den Buchungen. Anfangsbestände sind noch nicht erfasst (offene fachliche Entscheidung).
 
 ## Einrichten und Starten
 

@@ -1,10 +1,20 @@
 """Schnittstellen für den Datenzugriff. Die Implementierung liegt in der Infrastruktur."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from types import TracebackType
 from typing import Protocol, Self
 
-from meine_kasse.domain.entities import Account, AuditEntry, CostCenter, User
+from meine_kasse.domain.entities import (
+    Account,
+    AuditEntry,
+    Booking,
+    BookingControl,
+    CostCenter,
+    CostCenterPlan,
+    MonthlyActual,
+    MonthlyPlan,
+    User,
+)
 
 
 class UserRepository(Protocol):
@@ -51,6 +61,68 @@ class AuditRepository(Protocol):
     def add(self, entry: AuditEntry) -> None: ...
 
 
+class BookingControlRepository(Protocol):
+    def get_active(self) -> BookingControl | None: ...
+
+    def add(self, control: BookingControl) -> None: ...
+
+    def update(self, control: BookingControl) -> None: ...
+
+
+class ClosureRepository(Protocol):
+    def closed_months(self) -> set[tuple[int, int]]: ...
+
+    def closed_years(self) -> set[int]: ...
+
+
+class BookingRepository(Protocol):
+    def add(self, booking: Booking) -> None: ...
+
+    def update(self, booking: Booking) -> None:
+        """Ersetzt Kopfdaten und beide Buchungsstellen."""
+        ...
+
+    def delete(self, booking_id: str) -> None: ...
+
+    def get(self, booking_id: str) -> Booking | None: ...
+
+    def has_reversal(self, booking_id: str) -> bool: ...
+
+    def list_filtered(self, year: int | None, month: int | None) -> Sequence[Booking]: ...
+
+    def account_balance_cents(self, account_id: str) -> int:
+        """Saldo = Haben - Soll über alle Buchungen des Kontos."""
+        ...
+
+    def cost_center_actual_totals(self) -> Mapping[tuple[str, int, int], tuple[int, int]]:
+        """Soll- und Haben-Summe je (Kostenstelle, Jahr, Monat) aus Ist-Buchungen."""
+        ...
+
+    def budget_transfer_totals(self) -> Mapping[tuple[str, int], int]:
+        """Summe der Ansatzumbuchungen je (Kostenstelle, Jahr)."""
+        ...
+
+
+class PlanRepository(Protocol):
+    def get_plan(self, cost_center_id: str, year: int) -> CostCenterPlan | None: ...
+
+    def save_plan(self, plan: CostCenterPlan) -> None: ...
+
+    def list_plans(self) -> Sequence[CostCenterPlan]: ...
+
+    def monthly_plans(self, cost_center_id: str, year: int) -> Sequence[MonthlyPlan]: ...
+
+    def get_actual(self, cost_center_id: str, year: int, month: int) -> MonthlyActual | None: ...
+
+    def save_actual(self, actual: MonthlyActual) -> None: ...
+
+    def actuals_for_year(self, cost_center_id: str, year: int) -> Sequence[MonthlyActual]: ...
+
+    def list_actuals(self) -> Sequence[MonthlyActual]: ...
+
+    def delete_actual(self, actual_id: str) -> None: ...
+
+
 class UnitOfWork(Protocol):
     """Eine Transaktion. Ohne `commit()` wird beim Verlassen zurückgerollt."""
 
@@ -65,6 +137,18 @@ class UnitOfWork(Protocol):
 
     @property
     def audit(self) -> AuditRepository: ...
+
+    @property
+    def booking_control(self) -> BookingControlRepository: ...
+
+    @property
+    def closures(self) -> ClosureRepository: ...
+
+    @property
+    def bookings(self) -> BookingRepository: ...
+
+    @property
+    def plans(self) -> PlanRepository: ...
 
     def __enter__(self) -> Self: ...
 
