@@ -36,7 +36,13 @@ def test_from_cents_roundtrip() -> None:
 
 @pytest.mark.parametrize(
     ("cents", "expected"),
-    [(123456, "1.234,56 €"), (-123456, "-1.234,56 €"), (5, "0,05 €"), (-5, "-0,05 €"), (0, "0,00 €")],
+    [
+        (123456, "1.234,56 €"),
+        (-123456, "-1.234,56 €"),
+        (5, "0,05 €"),
+        (-5, "-0,05 €"),
+        (0, "0,00 €"),
+    ],
 )
 def test_format_euro(cents: int, expected: str) -> None:
     assert format_euro(cents) == expected
@@ -89,7 +95,9 @@ def test_iban_valid_and_normalized() -> None:
     assert normalize_iban("de89 3704 0044 0532 0130 00") == "DE89370400440532013000"
 
 
-@pytest.mark.parametrize("value", ["DE00370400440532013000", "12345", "DE89 3704 0044 0532 0130 01"])
+@pytest.mark.parametrize(
+    "value", ["DE00370400440532013000", "12345", "DE89 3704 0044 0532 0130 01"]
+)
 def test_iban_invalid(value: str) -> None:
     with pytest.raises(ValidationError):
         normalize_iban(value)

@@ -15,7 +15,8 @@ Umgesetzt (erste Schritte):
 - Schichtenstruktur `domain` / `application` / `infrastructure` / `presentation`
 - SQLite mit Alembic-Migration für alle Tabellen der Architekturvorgabe (Fremdschlüssel aktiv, GUID-Primärschlüssel)
 - Anmeldung mit Argon2id, Pflicht-Passwortwechsel beim erstmaligen Passwort, Passwort-Reset auf das erstmalige Passwort
-- Anlage von Kostenstellen und Konten (eindeutige Nummern, IBAN-Prüfung)
+- Anlage, Änderung und (De-)Aktivierung von Kostenstellen, Konten und Anwendern mit Dialogen im Menü „Stammdaten“
+- Pflege der Passwörter durch den Anwender (erstmaliges Passwort festlegen, auf erstmaliges Passwort zurücksetzen)
 - Fachregeln als reine Funktionen: Buchungsstellen und Wirkung, Ansatzsperre, Buchungszeitraum, Geld-/Prozentwerte
 - Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü (Fachdialoge folgen)
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from meine_kasse.application.services.auth_service import AuthService
 from meine_kasse.application.services.master_data_service import MasterDataService
+from meine_kasse.application.services.user_service import UserService
 from meine_kasse.infrastructure.database.migrate import upgrade_database
 from meine_kasse.infrastructure.database.session import Database
 from meine_kasse.infrastructure.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -16,6 +17,7 @@ class Container:
     database: Database
     auth: AuthService
     master_data: MasterDataService
+    users: UserService
 
 
 def build_container(database_file: Path) -> Container:
@@ -30,4 +32,5 @@ def build_container(database_file: Path) -> Container:
         database=database,
         auth=AuthService(uow_factory, Argon2PasswordHasher()),
         master_data=MasterDataService(uow_factory),
+        users=UserService(uow_factory),
     )

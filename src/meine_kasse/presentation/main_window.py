@@ -1,19 +1,37 @@
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QLabel, QMainWindow, QMenu, QMessageBox
 
 from meine_kasse import __version__
-from meine_kasse.application.services.auth_service import LoginResult
+from meine_kasse.application.services.auth_service import AuthService, LoginResult
+from meine_kasse.application.services.master_data_service import MasterDataService
+from meine_kasse.application.services.user_service import UserService
+from meine_kasse.presentation.dialogs.account_dialogs import AccountListDialog
+from meine_kasse.presentation.dialogs.cost_center_dialogs import CostCenterListDialog
+from meine_kasse.presentation.dialogs.user_dialogs import UserListDialog
 
 _PLANNED_TIP = "In Vorbereitung"
 
 
 class MainWindow(QMainWindow):
-    """Hauptmenü nach der Anmeldung. Fachliche Dialoge folgen schrittweise."""
+    """Hauptmenü nach der Anmeldung. Weitere fachliche Dialoge folgen schrittweise."""
 
-    def __init__(self, login: LoginResult) -> None:
+    def __init__(
+        self,
+        login: LoginResult,
+        *,
+        auth: AuthService,
+        master_data: MasterDataService,
+        users: UserService,
+    ) -> None:
         super().__init__()
         self.logout_requested = False
+        self._login = login
+        self._auth = auth
+        self._master_data = master_data
+        self._users = users
 
         self.setWindowTitle("Meine Kasse")
         self.resize(900, 600)
@@ -36,15 +54,23 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction(quit_action)
 
-        self._planned_menu(bar.addMenu("&Stammdaten"), ["Kostenstellen", "Konten", "Anwender"])
+        master_menu = bar.addMenu("&Stammdaten")
+        self._action(master_menu, "Kostenstellen", self._open_cost_centers)
+        self._action(master_menu, "Konten", self._open_accounts)
+        self._action(master_menu, "Anwender", self._open_users)
+
         self._planned_menu(bar.addMenu("&Buchungen"), ["Buchung erfassen", "Ansatzumbuchung"])
         self._planned_menu(bar.addMenu("&Planung"), ["Kostenstellenplanung"])
         self._planned_menu(bar.addMenu("&Abschluss"), ["Monatsabschluss", "Jahresabschluss"])
 
         help_menu = bar.addMenu("&Hilfe")
-        about = QAction("&Über Meine Kasse", self)
-        about.triggered.connect(self._about)
-        help_menu.addAction(about)
+        self._action(help_menu, "&Über Meine Kasse", self._about)
+
+    def _action(self, menu: QMenu, title: str, handler: Callable[[], None]) -> QAction:
+        action = QAction(title, self)
+        action.triggered.connect(lambda _checked=False: handler())
+        menu.addAction(action)
+        return action
 
     def _planned_menu(self, menu: QMenu, titles: list[str]) -> None:
         for title in titles:
@@ -52,6 +78,15 @@ class MainWindow(QMainWindow):
             action.setEnabled(False)
             action.setStatusTip(_PLANNED_TIP)
             menu.addAction(action)
+
+    def _open_cost_centers(self) -> None:
+        CostCenterListDialog(self._master_data, self._login.user_id, self).exec()
+
+    def _open_accounts(self) -> None:
+        AccountListDialog(self._master_data, self._login.user_id, self).exec()
+
+    def _open_users(self) -> None:
+        UserListDialog(self._auth, self._users, self._login.user_id, self).exec()
 
     def _logout(self) -> None:
         self.logout_requested = True

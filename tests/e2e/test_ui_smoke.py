@@ -7,6 +7,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialogButtonBox  # noqa: E402
 
 from meine_kasse.application.services.auth_service import AuthService, LoginResult  # noqa: E402
+from meine_kasse.application.services.master_data_service import MasterDataService  # noqa: E402
+from meine_kasse.application.services.user_service import UserService  # noqa: E402
 from meine_kasse.presentation.dialogs.change_password_dialog import (  # noqa: E402
     ChangePasswordDialog,
 )
@@ -72,10 +74,22 @@ def test_first_user_dialog_creates_user(qapp: QApplication, auth: AuthService) -
     assert auth.has_users()
 
 
-def test_main_window_has_menu_with_disabled_planned_entries(qapp: QApplication) -> None:
-    window = MainWindow(LoginResult("id", "Anna Muster", False))
+def test_main_window_menu_enables_master_data_and_keeps_planned_entries_disabled(
+    qapp: QApplication,
+    auth: AuthService,
+    master_data: MasterDataService,
+    users: UserService,
+) -> None:
+    window = MainWindow(
+        LoginResult("id", "Anna Muster", False), auth=auth, master_data=master_data, users=users
+    )
     titles = [action.text() for action in window.menuBar().actions()]
     assert titles == ["&Datei", "&Stammdaten", "&Buchungen", "&Planung", "&Abschluss", "&Hilfe"]
+
+    master_menu = window.menuBar().actions()[1].menu()
+    assert master_menu is not None
+    assert [a.text() for a in master_menu.actions()] == ["Kostenstellen", "Konten", "Anwender"]
+    assert all(action.isEnabled() for action in master_menu.actions())
 
     booking_menu = window.menuBar().actions()[2].menu()
     assert booking_menu is not None

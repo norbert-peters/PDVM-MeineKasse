@@ -40,6 +40,19 @@ class SqlAccountRepository:
         )
         self._session.flush()
 
+    def update(self, account: Account) -> None:
+        model = self._session.get(AccountModel, account.id)
+        if model is None:
+            raise LookupError(f"Konto {account.id} existiert nicht.")
+        model.name = account.name
+        model.number = account.number
+        model.account_type = account.account_type.value
+        model.bank_name = account.bank_name
+        model.owner_name = account.owner_name
+        model.iban = account.iban
+        model.is_active = account.is_active
+        self._session.flush()
+
     def get(self, account_id: str) -> Account | None:
         model = self._session.get(AccountModel, account_id)
         return None if model is None else _to_entity(model)

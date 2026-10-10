@@ -17,7 +17,10 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 3. Verbindungen zwischen Datensätzen erfolgen ausschließlich über die GUID, nie über Name oder Nummer.
 4. Schemaänderungen nur über Alembic-Migrationen; keine manuellen Eingriffe in produktive Dateien.
 5. Fremdschlüssel sind je Verbindung aktiviert, SQL-Parameter sind immer gebunden.
-6. Fachlich relevante Stammdaten werden deaktiviert statt gelöscht.
+6. Fachlich relevante Stammdaten werden deaktiviert statt gelöscht. Inaktive Stammdaten sind für neue Buchungen nicht mehr wählbar und in Listen standardmäßig ausgeblendet.
+7. Jede Änderung an Stammdaten wird mit Anwender und geänderten Feldern im Audit-Protokoll festgehalten. Werte von IBAN und Anschrift werden dabei nie protokolliert, nur der Hinweis „(geändert)“.
+8. Die Kostenstellenart (`STANDARD` / `WITHOUT_PLAN`) ist nach dem Anlegen fest, weil sie Planung und Ansatzsperre bestimmt. Nummern dürfen geändert werden, da Verbindungen über die GUID laufen, müssen aber eindeutig bleiben.
+9. Ein Anwender kann sich nicht selbst deaktivieren, und es bleibt immer mindestens ein aktiver Anwender bestehen.
 
 ## 3. Beträge und Buchungen
 

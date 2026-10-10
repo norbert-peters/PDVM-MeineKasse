@@ -5,6 +5,7 @@ import pytest
 
 from meine_kasse.application.services.auth_service import AuthService
 from meine_kasse.application.services.master_data_service import MasterDataService
+from meine_kasse.application.services.user_service import UserService
 from meine_kasse.domain.repositories import UnitOfWork
 from meine_kasse.infrastructure.database.migrate import upgrade_database
 from meine_kasse.infrastructure.database.session import Database
@@ -36,3 +37,8 @@ def auth(uow_factory: Callable[[], UnitOfWork]) -> AuthService:
 @pytest.fixture
 def master_data(uow_factory: Callable[[], UnitOfWork]) -> MasterDataService:
     return MasterDataService(uow_factory)
+
+
+@pytest.fixture
+def users(uow_factory: Callable[[], UnitOfWork]) -> UserService:
+    return UserService(uow_factory)

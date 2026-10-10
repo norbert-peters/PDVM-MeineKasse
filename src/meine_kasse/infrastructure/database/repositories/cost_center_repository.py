@@ -38,6 +38,18 @@ class SqlCostCenterRepository:
         )
         self._session.flush()
 
+    def update(self, cost_center: CostCenter) -> None:
+        model = self._session.get(CostCenterModel, cost_center.id)
+        if model is None:
+            raise LookupError(f"Kostenstelle {cost_center.id} existiert nicht.")
+        model.name = cost_center.name
+        model.number = cost_center.number
+        model.valid_from = cost_center.valid_from
+        model.kind = cost_center.kind.value
+        model.notes = cost_center.notes
+        model.is_active = cost_center.is_active
+        self._session.flush()
+
     def get(self, cost_center_id: str) -> CostCenter | None:
         model = self._session.get(CostCenterModel, cost_center_id)
         return None if model is None else _to_entity(model)

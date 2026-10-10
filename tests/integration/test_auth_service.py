@@ -76,9 +76,7 @@ def test_inactive_user_gets_same_failure_message(
     assert str(error.value) == LOGIN_FAILED_MESSAGE
 
 
-def test_change_password_clears_flag_and_sets_timestamp(
-    database: Database, user_id: str
-) -> None:
+def test_change_password_clears_flag_and_sets_timestamp(database: Database, user_id: str) -> None:
     fixed = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     service = AuthService(
         lambda: SqlAlchemyUnitOfWork(database.session_factory),
@@ -112,9 +110,7 @@ def test_user_cannot_pick_the_initial_password_again(auth: AuthService, user_id:
         auth.change_password(user_id, "Neues-Passwort-2", INITIAL)
 
 
-def test_reset_restores_initial_password_and_forces_change(
-    auth: AuthService, user_id: str
-) -> None:
+def test_reset_restores_initial_password_and_forces_change(auth: AuthService, user_id: str) -> None:
     auth.change_password(user_id, INITIAL, "Neues-Passwort-2")
     auth.reset_to_initial_password(user_id, actor_id=user_id)
 

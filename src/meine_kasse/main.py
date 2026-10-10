@@ -30,7 +30,9 @@ def run(app: QApplication, container: Container) -> int:
             if change_dialog.exec() != QDialog.DialogCode.Accepted:
                 continue
 
-        window = MainWindow(login)
+        window = MainWindow(
+            login, auth=container.auth, master_data=container.master_data, users=container.users
+        )
         window.show()
         app.exec()
         if not window.logout_requested:
