@@ -13,7 +13,9 @@ from meine_kasse.domain.entities import (
     CostCenterPlan,
     MonthlyActual,
     MonthlyPlan,
+    PeriodClosure,
     User,
+    YearClosure,
 )
 
 
@@ -74,6 +76,14 @@ class ClosureRepository(Protocol):
 
     def closed_years(self) -> set[int]: ...
 
+    def list_months(self) -> Sequence[PeriodClosure]: ...
+
+    def list_years(self) -> Sequence[YearClosure]: ...
+
+    def add_month(self, closure: PeriodClosure) -> None: ...
+
+    def add_year(self, closure: YearClosure) -> None: ...
+
 
 class BookingRepository(Protocol):
     def add(self, booking: Booking) -> None: ...
@@ -111,6 +121,10 @@ class PlanRepository(Protocol):
     def list_plans(self) -> Sequence[CostCenterPlan]: ...
 
     def monthly_plans(self, cost_center_id: str, year: int) -> Sequence[MonthlyPlan]: ...
+
+    def monthly_plans_for_month(self, year: int, month: int) -> Sequence[tuple[str, MonthlyPlan]]:
+        """Monatsplanwerte aller Kostenstellen eines Monats als (Kostenstelle, Plan)."""
+        ...
 
     def save_monthly_plan(self, plan: MonthlyPlan) -> None: ...
 

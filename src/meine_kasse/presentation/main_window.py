@@ -8,6 +8,7 @@ from meine_kasse import __version__
 from meine_kasse.application.services.auth_service import AuthService, LoginResult
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
+from meine_kasse.application.services.closing_service import ClosingService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
@@ -16,6 +17,7 @@ from meine_kasse.presentation.dialogs.account_dialogs import AccountListDialog
 from meine_kasse.presentation.dialogs.booking_control_dialog import BookingControlDialog
 from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
 from meine_kasse.presentation.dialogs.booking_list_dialog import BookingListDialog
+from meine_kasse.presentation.dialogs.closing_dialog import ClosingDialog
 from meine_kasse.presentation.dialogs.cost_center_dialogs import CostCenterListDialog
 from meine_kasse.presentation.dialogs.planning_dialog import PlanningDialog
 from meine_kasse.presentation.dialogs.user_dialogs import UserListDialog
@@ -36,6 +38,7 @@ class MainWindow(QMainWindow):
         booking_control: BookingControlService,
         bookings: BookingService,
         planning: PlanningService,
+        closing: ClosingService,
     ) -> None:
         super().__init__()
         self.logout_requested = False
@@ -46,6 +49,7 @@ class MainWindow(QMainWindow):
         self._booking_control = booking_control
         self._bookings = bookings
         self._planning = planning
+        self._closing = closing
 
         self.setWindowTitle("Meine Kasse")
         self.resize(900, 600)
@@ -82,7 +86,8 @@ class MainWindow(QMainWindow):
 
         planning_menu = bar.addMenu("&Planung")
         self._action(planning_menu, "Kostenstellenplanung", self._open_planning)
-        self._planned_menu(bar.addMenu("&Abschluss"), ["Monatsabschluss", "Jahresabschluss"])
+        closing_menu = bar.addMenu("&Abschluss")
+        self._action(closing_menu, "Monats- und Jahresabschluss", self._open_closing)
 
         help_menu = bar.addMenu("&Hilfe")
         self._action(help_menu, "&Über Meine Kasse", self._about)
@@ -111,6 +116,9 @@ class MainWindow(QMainWindow):
 
     def _open_planning(self) -> None:
         PlanningDialog(self._planning, self._booking_control, self._login.user_id, self).exec()
+
+    def _open_closing(self) -> None:
+        ClosingDialog(self._closing, self._booking_control, self._login.user_id, self).exec()
 
     def _open_booking_control(self) -> None:
         BookingControlDialog(self._booking_control, self._login.user_id, self).exec()

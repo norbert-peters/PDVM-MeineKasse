@@ -89,6 +89,19 @@ class SqlPlanRepository:
         )
         return [_monthly_to_entity(model) for model in self._session.scalars(statement)]
 
+    def monthly_plans_for_month(self, year: int, month: int) -> Sequence[tuple[str, MonthlyPlan]]:
+        statement = (
+            select(CostCenterPlanModel.cost_center_id, MonthlyPlanModel)
+            .join(
+                CostCenterPlanModel, CostCenterPlanModel.id == MonthlyPlanModel.cost_center_plan_id
+            )
+            .where(CostCenterPlanModel.year == year, MonthlyPlanModel.month == month)
+        )
+        return [
+            (cost_center_id, _monthly_to_entity(model))
+            for cost_center_id, model in self._session.execute(statement)
+        ]
+
     def save_monthly_plan(self, plan: MonthlyPlan) -> None:
         model = self._session.get(MonthlyPlanModel, plan.id)
         if model is None:

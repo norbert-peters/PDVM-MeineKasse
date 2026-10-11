@@ -61,6 +61,16 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 14. Quartals- und gleichmäßige Verteilung sind Eingabehilfen. Gespeichert werden immer Monatswerte, die Art (Monatlich, Quartal, Unregelmäßig, Rückstellung) ist nur eine Kennzeichnung.
 15. Planänderungen werden mit den geänderten Feldern im Audit-Protokoll festgehalten.
 
+## 4a. Abschluss
+
+1. Der Monatsabschluss schließt immer den aktuellen Buchungsmonat und geht lückenlos nacheinander. Danach rückt der Buchungsmonat auf den Folgemonat, `last_closed_*` wird fortgeschrieben.
+2. Vor dem Abschluss wird geprüft, ob die Ist-Fortschreibung und die Ansatzumbuchungen den Buchungen entsprechen. Bei Abweichungen wird nicht abgeschlossen.
+3. Die Signatur ist ein SHA-256-Hash über die kanonisch serialisierten Buchungen (inklusive Ansatzumbuchungen, Seite, Vorzeichen, Stellen, Texte) und die Monatsplanwerte des Monats. Die Eingabereihenfolge darf das Ergebnis nicht verändern.
+4. Der Jahresabschluss setzt zwölf abgeschlossene Monate mit noch gültigen Signaturen voraus. Seine Signatur bildet sich über die zwölf Monatssignaturen. Danach ist das ganze Jahr gesperrt.
+5. Abgeschlossene Monate und Jahre werden nie verändert oder gelöscht. Die Integritätsprüfung berechnet alle Signaturen neu und meldet Abweichungen.
+6. Das Standarddatum für neue Buchungen und Stornos liegt nie in einem abgeschlossenen Monat.
+7. Die Signatur macht Änderungen erkennbar, sie ersetzt keine revisionssichere Archivierung und wird nicht als solche beworben.
+
 ## 5. Sicherheit und Datenschutz
 
 1. Passwörter werden nur als Argon2id-Hash gespeichert, auch das erstmalige Passwort. Klartext ist verboten.

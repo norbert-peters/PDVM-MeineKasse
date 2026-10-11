@@ -8,6 +8,7 @@ import pytest
 from meine_kasse.application.services.auth_service import AuthService
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
+from meine_kasse.application.services.closing_service import ClosingService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
@@ -89,6 +90,11 @@ def world(auth: AuthService, master_data: MasterDataService) -> World:
 @pytest.fixture
 def planning(uow_factory: Callable[[], UnitOfWork]) -> PlanningService:
     return PlanningService(uow_factory, today=lambda: TODAY)
+
+
+@pytest.fixture
+def closing(uow_factory: Callable[[], UnitOfWork]) -> ClosingService:
+    return ClosingService(uow_factory, today=lambda: TODAY)
 
 
 @pytest.fixture

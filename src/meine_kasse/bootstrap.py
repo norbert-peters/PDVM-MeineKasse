@@ -6,6 +6,7 @@ from pathlib import Path
 from meine_kasse.application.services.auth_service import AuthService
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
+from meine_kasse.application.services.closing_service import ClosingService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
@@ -24,6 +25,7 @@ class Container:
     booking_control: BookingControlService
     bookings: BookingService
     planning: PlanningService
+    closing: ClosingService
 
 
 def build_container(database_file: Path) -> Container:
@@ -42,4 +44,5 @@ def build_container(database_file: Path) -> Container:
         booking_control=BookingControlService(uow_factory),
         bookings=BookingService(uow_factory),
         planning=PlanningService(uow_factory),
+        closing=ClosingService(uow_factory),
     )

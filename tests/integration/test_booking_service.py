@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from conftest import World
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
+from meine_kasse.application.services.closing_service import ClosingService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.domain.enums import BookingType, ObjectKind, Side
 from meine_kasse.domain.errors import (
@@ -250,6 +251,18 @@ def test_default_booking_date_falls_back_to_first_of_current_month(
 ) -> None:
     booking_control.update(planning_enabled=False, current_year=2026, current_month=9)
     assert bookings.default_booking_date() == date(2026, 9, 1)
+
+
+def test_default_booking_date_skips_a_closed_month(
+    bookings: BookingService,
+    booking_control: BookingControlService,
+    closing: ClosingService,
+    world: World,
+) -> None:
+    closing.close_month(actor_id=world.actor)  # Mai 2026, heute ist der 15.05.
+
+    assert booking_control.get().current_month == 6
+    assert bookings.default_booking_date() == date(2026, 6, 1)
 
 
 # Ansatzsperre

@@ -38,6 +38,7 @@ def run(app: QApplication, container: Container) -> int:
             booking_control=container.booking_control,
             bookings=container.bookings,
             planning=container.planning,
+            closing=container.closing,
         )
         window.show()
         app.exec()

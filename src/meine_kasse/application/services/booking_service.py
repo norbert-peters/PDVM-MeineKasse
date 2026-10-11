@@ -294,12 +294,15 @@ class BookingService:
     # Lesende Vorgänge
 
     def default_booking_date(self) -> date:
-        """Heute, falls buchbar, sonst der erste Tag des aktuellen Buchungsmonats."""
+        """Heute, falls buchbar und nicht abgeschlossen, sonst der Beginn des Buchungsmonats."""
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
+            closed_months = uow.closures.closed_months()
+            closed_years = uow.closures.closed_years()
         first, last = bookable_window(control.current_year, control.current_month)
         today = self._today()
-        if first <= today <= last:
+        is_closed = today.year in closed_years or (today.year, today.month) in closed_months
+        if first <= today <= last and not is_closed:
             return today
         return date(control.current_year, control.current_month, 1)
 
