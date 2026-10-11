@@ -70,6 +70,10 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 5. Abgeschlossene Monate und Jahre werden nie verändert oder gelöscht. Die Integritätsprüfung berechnet alle Signaturen neu und meldet Abweichungen.
 6. Das Standarddatum für neue Buchungen und Stornos liegt nie in einem abgeschlossenen Monat.
 7. Die Signatur macht Änderungen erkennbar, sie ersetzt keine revisionssichere Archivierung und wird nicht als solche beworben.
+8. Abschlüsse werden nur in umgekehrter Reihenfolge wiedereröffnet (siehe Architekturvorgabe 5.4). Eine Begründung ist Pflicht.
+9. Jedes Wiedereröffnen wird dauerhaft in `closure_reopenings` dokumentiert (Anwender, Datum, Begründung, verworfene Signatur, Signatur zuvor gültig) und zusätzlich im Audit-Protokoll. Diese Einträge werden nie geändert oder gelöscht.
+10. Eine ungültige Signatur verhindert das Wiedereröffnen nicht, wird aber vermerkt.
+11. Nach dem Wiedereröffnen eines Monats springt der Buchungsmonat auf diesen Monat zurück, `last_closed_*` wird auf den vorherigen Abschluss zurückgesetzt.
 
 ## 5. Sicherheit und Datenschutz
 

@@ -38,3 +38,8 @@ class PlanMode(StrEnum):
     QUARTERLY = "QUARTERLY"
     IRREGULAR = "IRREGULAR"
     RESERVE = "RESERVE"
+
+
+class ClosureKind(StrEnum):
+    MONTH = "MONTH"
+    YEAR = "YEAR"

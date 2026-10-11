@@ -4,12 +4,16 @@ from datetime import date
 import pytest
 
 from meine_kasse.domain.entities import Booking, BookingLeg, MonthlyPlan
-from meine_kasse.domain.enums import BookingType, PlanMode, Side
+from meine_kasse.domain.enums import BookingType, ClosureKind, PlanMode, Side
 from meine_kasse.domain.errors import ValidationError
 from meine_kasse.domain.services.closing_rules import (
+    MIN_REASON_LENGTH,
+    ClosureRef,
+    latest_closure,
     month_signature,
     next_period,
     projection_mismatches,
+    validate_reopen_reason,
     year_signature,
 )
 
@@ -115,3 +119,27 @@ def test_projection_mismatches_lists_only_differing_cost_centers() -> None:
     projected = {"a": (100, 0), "b": (0, 40), "d": (5, 0)}
     assert projection_mismatches(booked, projected) == ["b", "c", "d"]
     assert projection_mismatches({"a": (0, 0)}, {}) == []
+
+
+def test_latest_closure_orders_the_year_after_december_and_before_the_next_january() -> None:
+    month = ClosureRef(ClosureKind.MONTH, 2026, 12)
+    year = ClosureRef(ClosureKind.YEAR, 2026)
+    next_january = ClosureRef(ClosureKind.MONTH, 2027, 1)
+
+    assert month.order_key < year.order_key < next_january.order_key
+    assert latest_closure({(2026, 11), (2026, 12)}, set()) == month
+    assert latest_closure({(2026, 12)}, {2026}) == year
+    assert latest_closure({(2026, 12), (2027, 1)}, {2026}) == next_january
+    assert latest_closure(set(), set()) is None
+
+
+def test_closure_labels() -> None:
+    assert ClosureRef(ClosureKind.MONTH, 2026, 5).label == "Monat 05/2026"
+    assert ClosureRef(ClosureKind.YEAR, 2026).label == "Jahr 2026"
+
+
+def test_reopen_reason_is_mandatory_and_trimmed() -> None:
+    assert validate_reopen_reason("  Fehlbuchung korrigieren  ") == "Fehlbuchung korrigieren"
+    for bad in ("", "   ", "zu kurz", "x" * (MIN_REASON_LENGTH - 1)):
+        with pytest.raises(ValidationError, match="Begründung"):
+            validate_reopen_reason(bad)

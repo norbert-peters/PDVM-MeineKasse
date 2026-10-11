@@ -234,6 +234,7 @@ Meine Kasse/
 | `booking_control` | id, is_active (genau ein aktiver Datensatz), planning_enabled, current_year, current_month, last_closed_year, last_closed_month |
 | `period_closures` | id, year, month, closed_on, signature |
 | `year_closures` | id, year, closed_on, signature |
+| `closure_reopenings` | id, name, kind (`MONTH`/`YEAR`), year, month, reopened_on, reopened_by_user_id, reason, previous_signature, previous_closed_on, previous_closed_by_user_id, signature_was_valid |
 | `audit_log` | id, name (Aktion), entity, entity_id, user_id, old_value, new_value; enthält nie Passwörter oder Hashes |
 
 Das erstmalige Passwort wird nur als Hash abgelegt. Es kann zurückgesetzt werden und erzwingt bei der ersten Anmeldung einen Wechsel.
@@ -287,6 +288,16 @@ Regeln:
 3. Der Monat ist danach unveränderbar. `last_closed_month` und `current_month` werden fortgeschrieben.
 
 Die Signatur macht nachträgliche Änderungen erkennbar; sie ersetzt keine rechtlich revisionssichere Archivierung.
+
+### 5.4 Wiedereröffnen eines Abschlusses
+
+Ein Abschluss kann ausnahmsweise wiedereröffnet werden. Das ist ein eigener, dokumentierter Sonderprozess:
+
+1. **Umgekehrte Reihenfolge:** Es kann nur der zuletzt liegende Abschluss wiedereröffnet werden. Die Reihenfolge ist chronologisch, wobei der Jahresabschluss hinter dem Dezember seines Jahres und vor dem Januar des Folgejahres steht. Ein Jahresabschluss ist also vor den Monaten seines Jahres zu öffnen, und Monate späterer Jahre vor ihm. Bei einem Verstoß nennt die Meldung, was zuerst wiedereröffnet werden muss.
+2. **Begründung:** Eine Begründung (mindestens 10 Zeichen) ist Pflicht.
+3. **Dokumentation:** Der Vorgang wird dauerhaft in `closure_reopenings` festgehalten, mit Art und Zeitraum, Anwender, Datum, Begründung, der verworfenen Signatur, ursprünglichem Abschlussdatum und -anwender sowie dem Ergebnis der Signaturprüfung zum Zeitpunkt des Wiedereröffnens („Signatur zuvor gültig“). Zusätzlich entsteht ein Audit-Eintrag. Die Einträge werden nie gelöscht und bleiben auch nach erneutem Abschluss bestehen.
+4. **Wirkung:** Der Abschluss entfällt. Bei einem Monat springt der Buchungsmonat auf diesen Monat zurück, und `last_closed_*` zeigt auf den vorherigen Abschluss. Der Zeitraum ist wieder änderbar. Beim erneuten Abschluss entsteht eine neue Signatur.
+5. Eine ungültige Signatur verhindert das Wiedereröffnen nicht, wird aber als solche vermerkt. So ist erkennbar, wenn Daten nach dem Abschluss verändert wurden.
 
 ## 6. Fehlerbehandlung und Nachvollziehbarkeit
 

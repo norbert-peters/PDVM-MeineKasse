@@ -25,7 +25,9 @@ Umgesetzt (erste Schritte):
 - Monats- und Jahresabschluss mit SHA-256-Signatur, lückenloser Reihenfolge, Konsistenzprüfung vor dem Abschluss und Integritätsprüfung aller Abschlüsse
 - Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü, Stammdaten-, Buchungs-, Planungs- und Abschlussdialoge
 
-Noch nicht umgesetzt: Auswertungen sowie ein protokollierter Sonderprozess zum Wiederöffnen eines Abschlusses.
+- Wiedereröffnen von Abschlüssen nur in umgekehrter Reihenfolge, mit Pflichtbegründung und dauerhafter Dokumentation (Historie im Abschlussdialog)
+
+Noch nicht umgesetzt: Auswertungen.
 
 Ablauf eines Monats: Buchungen erfassen, Plan-Ist in der Planung ansehen, dann im Menü „Abschluss“ den aktuellen Buchungsmonat abschließen. Der Buchungsmonat rückt automatisch auf den Folgemonat. Sind alle zwölf Monate abgeschlossen, kann das Jahr abgeschlossen werden. Wer mitten im Jahr beginnt, setzt den Buchungsmonat in der Buchungssteuerung auf Januar und schließt die leeren Monate nacheinander ab.
 

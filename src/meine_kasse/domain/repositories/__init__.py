@@ -9,6 +9,7 @@ from meine_kasse.domain.entities import (
     AuditEntry,
     Booking,
     BookingControl,
+    ClosureReopening,
     CostCenter,
     CostCenterPlan,
     MonthlyActual,
@@ -83,6 +84,14 @@ class ClosureRepository(Protocol):
     def add_month(self, closure: PeriodClosure) -> None: ...
 
     def add_year(self, closure: YearClosure) -> None: ...
+
+    def delete_month(self, year: int, month: int) -> None: ...
+
+    def delete_year(self, year: int) -> None: ...
+
+    def add_reopening(self, reopening: ClosureReopening) -> None: ...
+
+    def list_reopenings(self) -> Sequence[ClosureReopening]: ...
 
 
 class BookingRepository(Protocol):

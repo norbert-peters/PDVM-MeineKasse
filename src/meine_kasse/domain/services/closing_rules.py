@@ -6,13 +6,60 @@ nachträgliche Änderungen erkennbar. Sie ersetzt keine revisionssichere Archivi
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from meine_kasse.domain.entities import Booking, MonthlyPlan
+from meine_kasse.domain.enums import ClosureKind
 from meine_kasse.domain.errors import ValidationError
 
 MONTHS_PER_YEAR = 12
+MIN_REASON_LENGTH = 10
+
+
+@dataclass(frozen=True, slots=True)
+class ClosureRef:
+    """Verweis auf einen Abschluss (Monat oder Jahr)."""
+
+    kind: ClosureKind
+    year: int
+    month: int | None = None
+
+    @property
+    def label(self) -> str:
+        if self.kind is ClosureKind.YEAR:
+            return f"Jahr {self.year}"
+        assert self.month is not None
+        return f"Monat {self.month:02d}/{self.year}"
+
+    @property
+    def order_key(self) -> tuple[int, int]:
+        """Reihenfolge der Abschlüsse: Der Jahresabschluss steht hinter dem Dezember seines
+        Jahres und vor dem Januar des Folgejahres."""
+        if self.kind is ClosureKind.YEAR:
+            return (self.year, MONTHS_PER_YEAR + 1)
+        assert self.month is not None
+        return (self.year, self.month)
+
+
+def latest_closure(
+    months: Collection[tuple[int, int]], years: Collection[int]
+) -> ClosureRef | None:
+    """Der zuletzt liegende Abschluss. Nur dieser darf wiedereröffnet werden."""
+    refs = [ClosureRef(ClosureKind.MONTH, year, month) for year, month in months]
+    refs += [ClosureRef(ClosureKind.YEAR, year) for year in years]
+    return max(refs, key=lambda ref: ref.order_key, default=None)
+
+
+def validate_reopen_reason(reason: str) -> str:
+    """Eine Begründung ist Pflicht, damit das Wiedereröffnen nachvollziehbar bleibt."""
+    cleaned = reason.strip()
+    if len(cleaned) < MIN_REASON_LENGTH:
+        raise ValidationError(
+            f"Bitte eine Begründung mit mindestens {MIN_REASON_LENGTH} Zeichen angeben."
+        )
+    return cleaned
 
 
 def next_period(year: int, month: int) -> tuple[int, int]:

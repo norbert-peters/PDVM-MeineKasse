@@ -10,15 +10,19 @@ from datetime import date
 
 from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.services.booking_control_service import load_or_create_control
-from meine_kasse.domain.entities import AuditEntry, PeriodClosure, YearClosure
+from meine_kasse.domain.entities import AuditEntry, ClosureReopening, PeriodClosure, YearClosure
+from meine_kasse.domain.enums import ClosureKind
 from meine_kasse.domain.errors import ValidationError
 from meine_kasse.domain.identifiers import new_id
 from meine_kasse.domain.repositories import UnitOfWork
 from meine_kasse.domain.services.closing_rules import (
     MONTHS_PER_YEAR,
+    ClosureRef,
+    latest_closure,
     month_signature,
     next_period,
     projection_mismatches,
+    validate_reopen_reason,
     year_signature,
 )
 from meine_kasse.domain.value_objects.money import format_euro
@@ -44,6 +48,7 @@ class ClosingOverview:
     year_signature: str | None
     month_blocker: str | None
     year_blocker: str | None
+    reopen_target: ClosureRef | None
 
     @property
     def can_close_month(self) -> bool:
@@ -52,6 +57,23 @@ class ClosingOverview:
     @property
     def can_close_year(self) -> bool:
         return self.year_blocker is None
+
+    @property
+    def can_reopen(self) -> bool:
+        return self.reopen_target is not None
+
+
+@dataclass(frozen=True, slots=True)
+class ReopeningView:
+    """Eintrag der Wiedereröffnungs-Historie mit aufgelösten Anwendernamen."""
+
+    ref: ClosureRef
+    reopened_on: date
+    reopened_by: str
+    reason: str
+    previous_closed_on: date
+    previous_closed_by: str
+    signature_was_valid: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +126,9 @@ class ClosingService:
                 year_signature=year_closure.signature if year_closure else None,
                 month_blocker=_month_blocker(uow, current),
                 year_blocker=_year_blocker(year, closures, year_closure is not None),
+                reopen_target=latest_closure(
+                    uow.closures.closed_months(), uow.closures.closed_years()
+                ),
             )
 
     def close_month(self, *, actor_id: str) -> MonthClosureResult:
@@ -175,6 +200,121 @@ class ClosingService:
             uow.commit()
             return signature
 
+    def reopen_month(self, year: int, month: int, *, reason: str, actor_id: str) -> None:
+        """Öffnet einen Monatsabschluss wieder. Nur der zuletzt liegende Abschluss ist erlaubt.
+
+        Der Abschluss entfällt, der Buchungsmonat springt auf diesen Monat zurück. Das
+        Wiedereröffnen wird mit Begründung und verworfener Signatur dauerhaft dokumentiert.
+        """
+        reason = validate_reopen_reason(reason)
+        target = ClosureRef(ClosureKind.MONTH, year, month)
+        with self._uow_factory() as uow:
+            control = load_or_create_control(uow, self._today)
+            _require_latest(uow, target)
+            closure = next(
+                c for c in uow.closures.list_months() if (c.year, c.month) == (year, month)
+            )
+            was_valid = _signature_of_month(uow, year, month) == closure.signature
+
+            uow.closures.delete_month(year, month)
+            uow.closures.add_reopening(
+                ClosureReopening(
+                    id=new_id(),
+                    kind=ClosureKind.MONTH,
+                    year=year,
+                    month=month,
+                    reopened_on=self._today(),
+                    reopened_by_user_id=actor_id,
+                    reason=reason,
+                    previous_signature=closure.signature,
+                    previous_closed_on=closure.closed_on,
+                    previous_closed_by_user_id=closure.closed_by_user_id,
+                    signature_was_valid=was_valid,
+                )
+            )
+            remaining = uow.closures.list_months()
+            last = max(((c.year, c.month) for c in remaining), default=None)
+            uow.booking_control.update(
+                replace(
+                    control,
+                    last_closed_year=last[0] if last else None,
+                    last_closed_month=last[1] if last else None,
+                    current_year=year,
+                    current_month=month,
+                )
+            )
+            uow.audit.add(
+                _reopen_audit("MONTH_REOPENED", target, closure.signature, reason, actor_id)
+            )
+            uow.commit()
+
+    def reopen_year(self, year: int, *, reason: str, actor_id: str) -> None:
+        """Öffnet einen Jahresabschluss wieder. Nur der zuletzt liegende Abschluss ist erlaubt."""
+        reason = validate_reopen_reason(reason)
+        target = ClosureRef(ClosureKind.YEAR, year)
+        with self._uow_factory() as uow:
+            load_or_create_control(uow, self._today)
+            _require_latest(uow, target)
+            closure = next(c for c in uow.closures.list_years() if c.year == year)
+            months = {c.month: c for c in uow.closures.list_months() if c.year == year}
+            was_valid = all(
+                _signature_of_month(uow, year, month) == item.signature
+                for month, item in months.items()
+            )
+            try:
+                was_valid = was_valid and (
+                    year_signature(year, {m: c.signature for m, c in months.items()})
+                    == closure.signature
+                )
+            except ValidationError:
+                was_valid = False
+
+            uow.closures.delete_year(year)
+            uow.closures.add_reopening(
+                ClosureReopening(
+                    id=new_id(),
+                    kind=ClosureKind.YEAR,
+                    year=year,
+                    month=None,
+                    reopened_on=self._today(),
+                    reopened_by_user_id=actor_id,
+                    reason=reason,
+                    previous_signature=closure.signature,
+                    previous_closed_on=closure.closed_on,
+                    previous_closed_by_user_id=closure.closed_by_user_id,
+                    signature_was_valid=was_valid,
+                )
+            )
+            uow.audit.add(
+                _reopen_audit("YEAR_REOPENED", target, closure.signature, reason, actor_id)
+            )
+            uow.commit()
+
+    def list_reopenings(self) -> Sequence[ReopeningView]:
+        """Historie aller Wiedereröffnungen, die jüngste zuerst."""
+        with self._uow_factory() as uow:
+            names: dict[str, str] = {}
+
+            def name_of(user_id: str) -> str:
+                if user_id not in names:
+                    user = uow.users.get(user_id)
+                    names[user_id] = user.display_name if user else user_id
+                return names[user_id]
+
+            views = [
+                ReopeningView(
+                    ref=ClosureRef(item.kind, item.year, item.month),
+                    reopened_on=item.reopened_on,
+                    reopened_by=name_of(item.reopened_by_user_id),
+                    reason=item.reason,
+                    previous_closed_on=item.previous_closed_on,
+                    previous_closed_by=name_of(item.previous_closed_by_user_id),
+                    signature_was_valid=item.signature_was_valid,
+                )
+                for item in uow.closures.list_reopenings()
+            ]
+            return list(reversed(views))
+
     def verify_closures(self) -> Sequence[ClosureCheck]:
         """Berechnet alle Signaturen neu. Abweichungen weisen auf nachträgliche Änderungen hin."""
         with self._uow_factory() as uow:
@@ -207,6 +347,40 @@ class ClosingService:
                     )
                 )
             return results
+
+
+def _require_latest(uow: UnitOfWork, target: ClosureRef) -> None:
+    """Abschlüsse dürfen nur in umgekehrter Reihenfolge wiedereröffnet werden."""
+    closed_months = uow.closures.closed_months()
+    closed_years = uow.closures.closed_years()
+    latest = latest_closure(closed_months, closed_years)
+    if latest is None:
+        raise ValidationError("Es gibt keinen Abschluss, der wiedereröffnet werden könnte.")
+    is_closed = (
+        target.year in closed_years
+        if target.kind is ClosureKind.YEAR
+        else (target.year, target.month) in closed_months
+    )
+    if not is_closed:
+        raise ValidationError(f"{target.label} ist nicht abgeschlossen.")
+    if latest != target:
+        raise ValidationError(
+            "Abschlüsse können nur in umgekehrter Reihenfolge wiedereröffnet werden. "
+            f"Zuerst muss {latest.label} wiedereröffnet werden."
+        )
+
+
+def _reopen_audit(
+    name: str, target: ClosureRef, signature: str, reason: str, actor_id: str
+) -> AuditEntry:
+    return AuditEntry(
+        name=name,
+        entity="period_closures" if target.kind is ClosureKind.MONTH else "year_closures",
+        entity_id=None,
+        user_id=actor_id,
+        old_value=f"{target.label} {signature[:16]}",
+        new_value=reason,
+    )
 
 
 def _month_blocker(uow: UnitOfWork, period: tuple[int, int]) -> str | None:

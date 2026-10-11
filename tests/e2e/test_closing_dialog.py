@@ -8,21 +8,26 @@ from conftest import World
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox  # noqa: E402
 
 from meine_kasse.application.services.booking_control_service import (  # noqa: E402
     BookingControlService,
 )
 from meine_kasse.application.services.booking_service import BookingService  # noqa: E402
 from meine_kasse.application.services.closing_service import ClosingService  # noqa: E402
-from meine_kasse.domain.enums import BookingType, ObjectKind, Side  # noqa: E402
+from meine_kasse.domain.enums import BookingType, ClosureKind, ObjectKind, Side  # noqa: E402
 from meine_kasse.domain.services.booking_rules import Stelle  # noqa: E402
+from meine_kasse.domain.services.closing_rules import ClosureRef  # noqa: E402
 from meine_kasse.infrastructure.database.models import (  # noqa: E402
     BookingModel,
     MonthlyActualModel,
 )
 from meine_kasse.infrastructure.database.session import Database  # noqa: E402
 from meine_kasse.presentation.dialogs.closing_dialog import ClosingDialog  # noqa: E402
+from meine_kasse.presentation.dialogs.reopen_closing_dialog import (  # noqa: E402
+    ReopenClosingDialog,
+    ReopeningHistoryDialog,
+)
 
 YEAR = 2026
 MONTH_COLUMN, STATUS_COLUMN, DATE_COLUMN, SIGNATURE_COLUMN = 0, 1, 2, 3
@@ -213,3 +218,138 @@ def test_year_can_be_closed_in_the_dialog_after_all_months(
     assert dialog.year_label.text().startswith("abgeschlossen (fix)")
     assert dialog.close_year_button.isEnabled() is False
     assert _cell(dialog, 11, STATUS_COLUMN) == "abgeschlossen (fix)"
+
+
+REASON = "Fehlbuchung wurde entdeckt"
+
+
+def _fake_reopen_exec(monkeypatch: pytest.MonkeyPatch, reason: str = REASON) -> None:
+    def fake_exec(self: ReopenClosingDialog) -> int:
+        self.reason_edit.setPlainText(reason)
+        self.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+        return int(self.result())
+
+    monkeypatch.setattr(ReopenClosingDialog, "exec", fake_exec)
+
+
+def test_reopen_button_follows_the_latest_closure(
+    qapp: QApplication,
+    closing: ClosingService,
+    booking_control: BookingControlService,
+    world: World,
+    confirm: None,
+) -> None:
+    dialog = _dialog(closing, booking_control, world)
+    assert dialog.reopen_button.isEnabled() is False
+    assert dialog.reopen_label.text() == "kein Abschluss vorhanden"
+
+    dialog.close_month_button.click()
+
+    assert dialog.reopen_button.isEnabled() is True
+    assert dialog.reopen_label.text() == "Monat 05/2026"
+
+
+def test_reopening_in_the_dialog_documents_and_rewinds(
+    qapp: QApplication,
+    closing: ClosingService,
+    booking_control: BookingControlService,
+    world: World,
+    confirm: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dialog = _dialog(closing, booking_control, world)
+    dialog.close_month_button.click()
+    _fake_reopen_exec(monkeypatch)
+
+    dialog.reopen_button.click()
+
+    assert "wiedereröffnet" in dialog.message_label.text()
+    assert dialog.current_label.text() == "05/2026"
+    assert _cell(dialog, 4, STATUS_COLUMN).startswith("offen (frei)")
+    assert dialog.reopen_button.isEnabled() is False
+    (entry,) = closing.list_reopenings()
+    assert entry.reason == REASON
+
+
+def test_reopen_dialog_requires_a_reason(
+    qapp: QApplication,
+    closing: ClosingService,
+    booking_control: BookingControlService,
+    world: World,
+    confirm: None,
+) -> None:
+    ClosingDialog(closing, booking_control, world.actor).close_month_button.click()
+    dialog = ReopenClosingDialog(closing, ClosureRef(ClosureKind.MONTH, YEAR, 5), world.actor)
+    dialog.reason_edit.setPlainText("kurz")
+    dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+
+    assert "Begründung" in dialog.error_label.text()
+    assert closing.list_reopenings() == []
+    assert closing.get_overview(YEAR).months[4].is_closed is True
+
+
+def test_reopen_dialog_reports_the_required_order(
+    qapp: QApplication,
+    closing: ClosingService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    booking_control.update(planning_enabled=False, current_year=YEAR, current_month=1)
+    closing.close_month(actor_id=world.actor)
+    closing.close_month(actor_id=world.actor)
+    dialog = ReopenClosingDialog(closing, ClosureRef(ClosureKind.MONTH, YEAR, 1), world.actor)
+    dialog.reason_edit.setPlainText(REASON)
+    dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
+
+    assert "umgekehrter Reihenfolge" in dialog.error_label.text()
+    assert "Monat 02/2026" in dialog.error_label.text()
+
+
+def test_year_closing_is_reopened_first_in_the_dialog(
+    qapp: QApplication,
+    closing: ClosingService,
+    booking_control: BookingControlService,
+    world: World,
+    confirm: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    booking_control.update(planning_enabled=False, current_year=YEAR, current_month=1)
+    for _ in range(12):
+        closing.close_month(actor_id=world.actor)
+    dialog = _dialog(closing, booking_control, world)
+    dialog.year_spin.setValue(YEAR)
+    dialog.close_year_button.click()
+    assert dialog.reopen_label.text() == "Jahr 2026"
+    _fake_reopen_exec(monkeypatch)
+
+    dialog.reopen_button.click()
+
+    assert dialog.year_label.text() == "offen (frei)"
+    assert dialog.reopen_label.text() == "Monat 12/2026"
+
+
+def test_history_dialog_lists_reopenings_with_signature_validity(
+    qapp: QApplication,
+    closing: ClosingService,
+    booking_control: BookingControlService,
+    bookings: BookingService,
+    database: Database,
+    world: World,
+) -> None:
+    booking_id = _spend(bookings, world, date(2026, 5, 10))
+    closing.close_month(actor_id=world.actor)
+    with database.session_factory() as session:
+        session.get(BookingModel, booking_id).amount_cents = 1  # type: ignore[union-attr]
+        session.commit()
+    closing.reopen_month(YEAR, 5, reason=REASON, actor_id=world.actor)
+
+    history = ReopeningHistoryDialog(closing)
+
+    assert history.table.rowCount() == 1
+    cells = [history.table.item(0, column).text() for column in range(6)]  # type: ignore[union-attr]
+    assert cells[0] == "Monat 05/2026"
+    assert cells[1] == "15.05.2026"
+    assert cells[2] == "A A"
+    assert cells[3] == REASON
+    assert cells[4].startswith("15.05.2026")
+    assert cells[5] == "Nein"

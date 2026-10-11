@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from meine_kasse.domain.enums import AccountType, CostCenterKind
+from meine_kasse.domain.enums import AccountType, ClosureKind, CostCenterKind
 from meine_kasse.infrastructure.database.base import Base, UtcDateTime
 from meine_kasse.infrastructure.database.models.mixins import (
     IdNameMixin,
@@ -116,3 +116,27 @@ class YearClosureModel(IdNameMixin, TimestampMixin, Base):
     closed_on: Mapped[date] = mapped_column(Date)
     closed_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     signature: Mapped[str] = mapped_column(String(64))
+
+
+class ClosureReopeningModel(IdNameMixin, TimestampMixin, Base):
+    """Nachweis über das Wiedereröffnen eines Monats- oder Jahresabschlusses (nie gelöscht)."""
+
+    __tablename__ = "closure_reopenings"
+    __table_args__ = (
+        CheckConstraint(in_values("kind", ClosureKind), name="kind_valid"),
+        CheckConstraint(
+            "(kind = 'MONTH' AND month BETWEEN 1 AND 12) OR (kind = 'YEAR' AND month IS NULL)",
+            name="month_matches_kind",
+        ),
+    )
+
+    kind: Mapped[str] = mapped_column(String(10))
+    year: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int | None] = mapped_column(Integer, default=None)
+    reopened_on: Mapped[date] = mapped_column(Date)
+    reopened_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    previous_signature: Mapped[str] = mapped_column(String(64))
+    previous_closed_on: Mapped[date] = mapped_column(Date)
+    previous_closed_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    signature_was_valid: Mapped[bool] = mapped_column(Boolean)
