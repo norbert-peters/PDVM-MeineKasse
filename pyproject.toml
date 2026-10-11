@@ -20,6 +20,9 @@ dev = [
     "mypy>=1.8",
     "ruff>=0.4",
 ]
+build = [
+    "pyinstaller>=6.0",
+]
 
 [project.scripts]
 meine-kasse = "meine_kasse.main:main"

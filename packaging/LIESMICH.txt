@@ -1,0 +1,65 @@
+MEINE KASSE – Hinweise für den Testbetrieb
+==========================================
+
+Starten
+-------
+Doppelklick auf  MeineKasse.exe  in diesem Ordner. Es ist keine Installation und kein Python
+nötig. Der gesamte Ordner "MeineKasse" gehört zusammen (nicht nur die EXE kopieren).
+
+Beim ersten Start legen Sie den ersten Anwender mit einem erstmaligen Passwort an. Dieses
+müssen Sie bei der ersten Anmeldung ändern.
+
+Windows meldet beim ersten Start unter Umständen "Der Computer wurde durch Windows geschützt"
+(SmartScreen), weil die Anwendung nicht signiert ist. Mit "Weitere Informationen" und
+"Trotzdem ausführen" starten Sie sie.
+
+Wo liegen meine Daten?
+----------------------
+Die Daten liegen NICHT im Programmordner, sondern hier:
+
+    %LOCALAPPDATA%\MeineKasse\meine_kasse.sqlite     (Datenbank)
+    %LOCALAPPDATA%\MeineKasse\logs\meine_kasse.log   (Protokoll bei Fehlern)
+
+(Im Windows-Explorer einfach  %LOCALAPPDATA%\MeineKasse  in die Adresszeile eingeben.)
+Im Programm zeigt  Hilfe > Über Meine Kasse  die genauen Pfade.
+
+Dadurch bleiben Ihre Daten erhalten, wenn Sie den Programmordner ersetzen oder löschen.
+
+Datensicherung
+--------------
+Im Programm:  Datei > Datensicherung erstellen...
+Es wird eine vollständige, geprüfte Kopie der Datenbank als .sqlite-Datei geschrieben.
+Sichern Sie vor jedem Update und regelmäßig. Bewahren Sie die Sicherung an einem anderen
+Ort auf (z. B. USB-Stick).
+
+Wiederherstellen
+----------------
+1. Programm beenden.
+2. Die Sicherungsdatei nach  %LOCALAPPDATA%\MeineKasse  kopieren und in  meine_kasse.sqlite
+   umbenennen (die vorhandene Datei vorher zur Seite legen).
+3. Programm starten.
+
+Update auf eine neue Version
+----------------------------
+1. Datensicherung erstellen.
+2. Programm beenden und den alten Ordner "MeineKasse" durch den neuen ersetzen.
+3. Starten. Die Datenbank wird beim Start automatisch auf den neuen Stand gebracht.
+
+Testen mit getrennten Daten (ohne die echten Daten zu berühren)
+---------------------------------------------------------------
+Mit der Umgebungsvariable MEINE_KASSE_DB können Sie eine andere Datenbankdatei verwenden:
+
+    set MEINE_KASSE_DB=C:\Temp\kasse_test\test.sqlite
+    MeineKasse.exe
+
+Löschen Sie diese Datei, um wieder bei null zu beginnen.
+
+Deinstallation
+--------------
+Den Ordner "MeineKasse" löschen. Wollen Sie auch die Daten entfernen, zusätzlich
+%LOCALAPPDATA%\MeineKasse löschen (vorher sichern!).
+
+Bei Fehlern
+-----------
+Meldet das Programm einen unerwarteten Fehler, steht die Ursache in der Protokolldatei (Pfad
+siehe oben). Bitte diese Datei mitschicken. Sie enthält keine Passwörter.

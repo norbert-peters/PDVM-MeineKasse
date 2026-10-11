@@ -1,3 +1,4 @@
+import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,25 @@ class Database:
 
     def dispose(self) -> None:
         self.engine.dispose()
+
+    def backup_to(self, target: Path) -> None:
+        """Erstellt mit der SQLite-Sicherungsfunktion eine konsistente Kopie und prüft sie."""
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            target.unlink()
+        source = self.engine.raw_connection()
+        try:
+            destination = sqlite3.connect(target)
+            try:
+                source.driver_connection.backup(destination)  # type: ignore[union-attr]
+                result = destination.execute("PRAGMA integrity_check").fetchone()
+            finally:
+                destination.close()
+        finally:
+            source.close()
+        if result is None or result[0] != "ok":
+            target.unlink(missing_ok=True)
+            raise RuntimeError("Die Sicherung ist fehlerhaft und wurde verworfen.")
 
 
 def _configure_sqlite(engine: Engine) -> None:

@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Protocol
 
 from meine_kasse.domain.repositories import UnitOfWork
@@ -23,3 +24,9 @@ class PasswordHasher(Protocol):
     def verify(self, password_hash: str, password: str) -> bool: ...
 
     def needs_rehash(self, password_hash: str) -> bool: ...
+
+
+class DatabaseBackup(Protocol):
+    """Erzeugt eine konsistente Kopie der Datenbank."""
+
+    def backup_to(self, target: Path) -> None: ...

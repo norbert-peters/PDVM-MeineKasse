@@ -1,12 +1,14 @@
 import os
+from pathlib import Path
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialogButtonBox  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFileDialog, QMessageBox  # noqa: E402
 
 from meine_kasse.application.services.auth_service import AuthService, LoginResult  # noqa: E402
+from meine_kasse.application.services.backup_service import BackupService  # noqa: E402
 from meine_kasse.application.services.booking_control_service import (  # noqa: E402
     BookingControlService,
 )
@@ -18,6 +20,7 @@ from meine_kasse.application.services.opening_balance_service import (  # noqa: 
 )
 from meine_kasse.application.services.planning_service import PlanningService  # noqa: E402
 from meine_kasse.application.services.user_service import UserService  # noqa: E402
+from meine_kasse.infrastructure.database.session import Database  # noqa: E402
 from meine_kasse.presentation.dialogs.change_password_dialog import (  # noqa: E402
     ChangePasswordDialog,
 )
@@ -93,6 +96,8 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
     planning: PlanningService,
     closing: ClosingService,
     openings: OpeningBalanceService,
+    database: Database,
+    tmp_path: Path,
 ) -> None:
     window = MainWindow(
         LoginResult("id", "Anna Muster", False),
@@ -104,6 +109,7 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
         planning=planning,
         closing=closing,
         opening_balances=openings,
+        backup=BackupService(database, tmp_path / "test.sqlite"),
     )
     titles = [action.text() for action in window.menuBar().actions()]
     assert titles == ["&Datei", "&Stammdaten", "&Buchungen", "&Planung", "&Abschluss", "&Hilfe"]
@@ -113,6 +119,11 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
         assert menu is not None
         return [(a.text(), a.isEnabled()) for a in menu.actions() if not a.isSeparator()]
 
+    assert entries(0) == [
+        ("&Datensicherung erstellen…", True),
+        ("&Abmelden", True),
+        ("&Beenden", True),
+    ]
     assert entries(1) == [
         ("Kostenstellen", True),
         ("Konten", True),
@@ -128,3 +139,49 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
     assert entries(3) == [("Kostenstellenplanung", True)]
     assert entries(4) == [("Monats- und Jahresabschluss", True)]
     assert "Anna Muster" in window.statusBar().currentMessage()
+
+
+def test_backup_menu_action_writes_the_chosen_file(
+    qapp: QApplication,
+    auth: AuthService,
+    master_data: MasterDataService,
+    users: UserService,
+    booking_control: BookingControlService,
+    bookings: BookingService,
+    planning: PlanningService,
+    closing: ClosingService,
+    openings: OpeningBalanceService,
+    database: Database,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window = MainWindow(
+        LoginResult("id", "Anna Muster", False),
+        auth=auth,
+        master_data=master_data,
+        users=users,
+        booking_control=booking_control,
+        bookings=bookings,
+        planning=planning,
+        closing=closing,
+        opening_balances=openings,
+        backup=BackupService(database, tmp_path / "test.sqlite"),
+    )
+    target = tmp_path / "ziel" / "meine_sicherung"
+    messages: list[str] = []
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName", lambda *_a, **_k: (str(target), "SQLite-Datei (*.sqlite)")
+    )
+    monkeypatch.setattr(
+        QMessageBox, "information", lambda _parent, _title, text: messages.append(text) or None
+    )
+
+    window._create_backup()
+
+    assert (tmp_path / "ziel" / "meine_sicherung.sqlite").exists()
+    assert "meine_sicherung.sqlite" in messages[0]
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_a, **_k: ("", ""))
+    messages.clear()
+    window._create_backup()
+    assert messages == []

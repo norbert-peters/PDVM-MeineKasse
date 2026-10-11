@@ -46,7 +46,26 @@ python -m venv .venv
 
 Die Datenbank liegt standardmäßig unter `%LOCALAPPDATA%\MeineKasse\meine_kasse.sqlite`. Mit der Umgebungsvariable `MEINE_KASSE_DB` kann ein anderer Pfad gesetzt werden. Beim Start wird das Schema automatisch migriert.
 
-## Qualitätssicherung
+## Installationspaket für den Testbetrieb (ohne Entwicklungsumgebung)
+
+Das Paket ist ein Ordner mit `MeineKasse.exe` (PyInstaller). Auf dem Testrechner sind **kein Python und keine Installation** nötig.
+
+Bauen (einmalig `pip install -e ".[dev,build]"`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+```
+
+Ergebnis: `dist\MeineKasse\` und `dist\MeineKasse-<Version>-win64.zip` (ca. 110 MB, Bauzeit einige Minuten). Das Skript führt am Ende automatisch einen **Smoke-Test** aus: Selbsttest (`MeineKasse.exe --selbsttest`: Anwender mit Argon2, Stammdaten, Buchung, Abschluss mit Signatur, Datensicherung in einer temporären Datenbank) und einen Start der Oberfläche mit Migrationsprüfung.
+
+Auf dem Testrechner:
+
+1. ZIP entpacken und den **ganzen Ordner** `MeineKasse` an einen beliebigen Ort kopieren (z. B. `C:\Programme\MeineKasse` oder `C:\Tools\MeineKasse`).
+2. `MeineKasse.exe` starten. Beim ersten Start nach dem Kopieren prüft Windows die Dateien, das kann 20 bis 40 Sekunden dauern. Die EXE ist nicht signiert, SmartScreen fragt ggf. nach („Weitere Informationen“ → „Trotzdem ausführen“).
+3. Daten liegen **nicht** im Programmordner, sondern in `%LOCALAPPDATA%\MeineKasse` (Datenbank `meine_kasse.sqlite`, Protokoll `logs\meine_kasse.log`). Ein Update ersetzt nur den Programmordner. Mit der Umgebungsvariable `MEINE_KASSE_DB` lässt sich eine andere Datenbankdatei verwenden, z. B. für Tests.
+4. Datensicherung im Programm: Datei → Datensicherung erstellen. Vor jedem Update sichern.
+
+Eine ausführliche Anleitung für Tester liegt als `LIESMICH.txt` im Paket (Quelle: `packaging\LIESMICH.txt`).
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest

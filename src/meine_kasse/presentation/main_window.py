@@ -1,11 +1,13 @@
 from collections.abc import Callable
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QLabel, QMainWindow, QMenu, QMessageBox
+from PySide6.QtWidgets import QFileDialog, QLabel, QMainWindow, QMenu, QMessageBox
 
 from meine_kasse import __version__
 from meine_kasse.application.services.auth_service import AuthService, LoginResult
+from meine_kasse.application.services.backup_service import BackupService
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.closing_service import ClosingService
@@ -13,7 +15,9 @@ from meine_kasse.application.services.master_data_service import MasterDataServi
 from meine_kasse.application.services.opening_balance_service import OpeningBalanceService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
+from meine_kasse.config import database_path, log_dir
 from meine_kasse.domain.enums import BookingType
+from meine_kasse.domain.errors import DomainError
 from meine_kasse.presentation.dialogs.account_dialogs import AccountListDialog
 from meine_kasse.presentation.dialogs.booking_control_dialog import BookingControlDialog
 from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
@@ -42,6 +46,7 @@ class MainWindow(QMainWindow):
         planning: PlanningService,
         closing: ClosingService,
         opening_balances: OpeningBalanceService,
+        backup: BackupService,
     ) -> None:
         super().__init__()
         self.logout_requested = False
@@ -54,6 +59,7 @@ class MainWindow(QMainWindow):
         self._planning = planning
         self._closing = closing
         self._opening_balances = opening_balances
+        self._backup = backup
 
         self.setWindowTitle("Meine Kasse")
         self.resize(900, 600)
@@ -68,12 +74,15 @@ class MainWindow(QMainWindow):
         bar = self.menuBar()
 
         file_menu = bar.addMenu("&Datei")
+        backup_action = QAction("&Datensicherung erstellen…", self)
+        backup_action.triggered.connect(self._create_backup)
         logout = QAction("&Abmelden", self)
         logout.triggered.connect(self._logout)
         quit_action = QAction("&Beenden", self)
         quit_action.triggered.connect(self.close)
-        file_menu.addAction(logout)
+        file_menu.addAction(backup_action)
         file_menu.addSeparator()
+        file_menu.addAction(logout)
         file_menu.addAction(quit_action)
 
         master_menu = bar.addMenu("&Stammdaten")
@@ -154,6 +163,20 @@ class MainWindow(QMainWindow):
             parent=self,
         ).exec()
 
+    def _create_backup(self) -> None:
+        suggestion = str(Path.home() / self._backup.suggested_file_name())
+        chosen, _filter = QFileDialog.getSaveFileName(
+            self, "Datensicherung erstellen", suggestion, "SQLite-Datei (*.sqlite)"
+        )
+        if not chosen:
+            return
+        try:
+            target = self._backup.create_backup(Path(chosen))
+        except DomainError as error:
+            QMessageBox.warning(self, "Datensicherung", str(error))
+            return
+        QMessageBox.information(self, "Datensicherung", f"Die Sicherung wurde erstellt:\n{target}")
+
     def _logout(self) -> None:
         self.logout_requested = True
         self.close()
@@ -163,5 +186,7 @@ class MainWindow(QMainWindow):
             self,
             "Über Meine Kasse",
             f"Meine Kasse {__version__}\n"
-            "Einfache Haushaltsbuchhaltung auf Kostenstellen und Konten.",
+            "Einfache Haushaltsbuchhaltung auf Kostenstellen und Konten.\n\n"
+            f"Datenbank: {database_path()}\n"
+            f"Protokolle: {log_dir()}",
         )

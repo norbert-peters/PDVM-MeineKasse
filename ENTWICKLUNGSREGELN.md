@@ -124,3 +124,12 @@ Tests verwenden ausschließlich synthetische Daten und eine temporäre SQLite-Da
 ## 8. Abnahme eines Funktionsbereichs
 
 Ein Bereich ist fertig, wenn Regel und Verhalten in der Architekturvorgabe beschrieben sind, Eingabe, Validierung, Speicherung und Anzeige vollständig sind, Fehlerfälle behandelt werden, Tests und ggf. Migration vorliegen und keine Geheimnisse oder personenbezogenen Daten in Logs oder Versionsverwaltung gelangen.
+
+## 9. Paketierung und Betrieb
+
+1. Daten (Datenbank, Protokolle) liegen nie im Programmverzeichnis, sondern unter `%LOCALAPPDATA%\MeineKasse` bzw. im Pfad aus `MEINE_KASSE_DB`. Ein Update ersetzt nur das Programm.
+2. Die Datenbank wird beim Start automatisch migriert. Neue Migrationen müssen als Dateien im Paket liegen (siehe `packaging\meine_kasse.spec`) und von `env.py` ohne zusätzliche Abhängigkeiten ladbar sein; Importe, die PyInstaller nicht erkennt, kommen als Hidden Import in die Spezifikation.
+3. Unerwartete Fehler werden mit Stacktrace in `logs\meine_kasse.log` geschrieben (Rotation). Dem Anwender wird nur eine allgemeine Meldung mit dem Dateipfad gezeigt. Es werden nie Passwörter, Hashes oder Eingaben protokolliert.
+4. Die Datensicherung erzeugt eine vollständige, geprüfte (`integrity_check`) Kopie über die SQLite-Sicherungsfunktion und überschreibt nie die laufende Datenbank.
+5. Ein Paket wird erst ausgeliefert, wenn `packaging\build.ps1` fehlerfrei durchläuft. Dessen Smoke-Test führt `MeineKasse.exe --selbsttest` (temporäre Datenbank, nie die echten Daten) und einen Oberflächenstart mit Migrationsprüfung aus.
+6. Neue Schichten, die im gepackten Programm fehlen könnten (Datenbank-Dialekte, native Bibliotheken, Migrationen), werden in den Selbsttest aufgenommen.

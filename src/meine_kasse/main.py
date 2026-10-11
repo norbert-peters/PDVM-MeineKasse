@@ -1,15 +1,21 @@
 """Programmstart: Anmeldung, Pflicht-Passwortwechsel, Hauptmenü."""
 
+import logging
 import sys
 
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
+from meine_kasse import __version__
 from meine_kasse.bootstrap import Container, build_container
-from meine_kasse.config import database_path
+from meine_kasse.config import database_path, log_dir
+from meine_kasse.logging_setup import configure_logging, install_excepthook
 from meine_kasse.presentation.dialogs.change_password_dialog import ChangePasswordDialog
 from meine_kasse.presentation.dialogs.first_user_dialog import FirstUserDialog
 from meine_kasse.presentation.dialogs.login_dialog import LoginDialog
 from meine_kasse.presentation.main_window import MainWindow
+from meine_kasse.selftest import SELFTEST_FLAG, run_selftest
+
+logger = logging.getLogger("meine_kasse.main")
 
 
 def run(app: QApplication, container: Container) -> int:
@@ -40,6 +46,7 @@ def run(app: QApplication, container: Container) -> int:
             planning=container.planning,
             closing=container.closing,
             opening_balances=container.opening_balances,
+            backup=container.backup,
         )
         window.show()
         app.exec()
@@ -47,20 +54,34 @@ def run(app: QApplication, container: Container) -> int:
             return 0
 
 
+def _report_crash(text: str) -> None:
+    QMessageBox.critical(None, "Meine Kasse", text)
+
+
 def main() -> int:
+    log_path = configure_logging(log_dir())
+    logger.info("Start Meine Kasse %s, Datenbank %s", __version__, database_path())
+    if SELFTEST_FLAG in sys.argv[1:]:
+        return run_selftest()
     app = QApplication(sys.argv)
     app.setApplicationName("Meine Kasse")
+    install_excepthook(log_path, report=_report_crash)
     try:
         container = build_container(database_path())
-    except Exception as error:  # noqa: BLE001 - Startfehler dürfen die Oberfläche nicht abstürzen lassen
+    except Exception:  # noqa: BLE001 - Startfehler dürfen die Oberfläche nicht abstürzen lassen
+        logger.exception("Die Datenbank konnte nicht geöffnet werden")
         QMessageBox.critical(
-            None, "Meine Kasse", f"Die Datenbank konnte nicht geöffnet werden.\n\n{error}"
+            None,
+            "Meine Kasse",
+            "Die Datenbank konnte nicht geöffnet werden.\n\n"
+            f"Datenbank: {database_path()}\nDetails stehen in der Protokolldatei:\n{log_path}",
         )
         return 1
     try:
         return run(app, container)
     finally:
         container.database.dispose()
+        logger.info("Ende Meine Kasse")
 
 
 if __name__ == "__main__":

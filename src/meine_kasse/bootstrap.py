@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meine_kasse.application.services.auth_service import AuthService
+from meine_kasse.application.services.backup_service import BackupService
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.closing_service import ClosingService
@@ -28,6 +29,7 @@ class Container:
     planning: PlanningService
     closing: ClosingService
     opening_balances: OpeningBalanceService
+    backup: BackupService
 
 
 def build_container(database_file: Path) -> Container:
@@ -48,4 +50,5 @@ def build_container(database_file: Path) -> Container:
         planning=PlanningService(uow_factory),
         closing=ClosingService(uow_factory),
         opening_balances=OpeningBalanceService(uow_factory),
+        backup=BackupService(database, database_file),
     )
