@@ -6,6 +6,7 @@ from typing import Protocol, Self
 
 from meine_kasse.domain.entities import (
     Account,
+    AccountOpeningBalance,
     AuditEntry,
     Booking,
     BookingControl,
@@ -110,7 +111,11 @@ class BookingRepository(Protocol):
     def list_filtered(self, year: int | None, month: int | None) -> Sequence[Booking]: ...
 
     def account_balance_cents(self, account_id: str) -> int:
-        """Saldo = Haben - Soll über alle Buchungen des Kontos."""
+        """Bewegung = Haben - Soll über alle Buchungen des Kontos (ohne Vortrag)."""
+        ...
+
+    def account_year_movements(self) -> Mapping[tuple[str, int], int]:
+        """Bewegung (Haben - Soll) je (Konto, Geschäftsjahr); Schlüssel nur, wenn gebucht wurde."""
         ...
 
     def cost_center_actual_totals(self) -> Mapping[tuple[str, int, int], tuple[int, int]]:
@@ -120,6 +125,18 @@ class BookingRepository(Protocol):
     def budget_transfer_totals(self) -> Mapping[tuple[str, int], int]:
         """Summe der Ansatzumbuchungen je (Kostenstelle, Jahr)."""
         ...
+
+
+class OpeningBalanceRepository(Protocol):
+    def get(self, account_id: str) -> AccountOpeningBalance | None: ...
+
+    def list_all(self) -> Sequence[AccountOpeningBalance]: ...
+
+    def save(self, opening: AccountOpeningBalance) -> None:
+        """Legt den Vortrag des Kontos an oder ersetzt ihn (auch das Jahr)."""
+        ...
+
+    def delete(self, account_id: str) -> None: ...
 
 
 class PlanRepository(Protocol):
@@ -171,6 +188,9 @@ class UnitOfWork(Protocol):
 
     @property
     def bookings(self) -> BookingRepository: ...
+
+    @property
+    def opening_balances(self) -> OpeningBalanceRepository: ...
 
     @property
     def plans(self) -> PlanRepository: ...

@@ -42,6 +42,9 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 16. Eine Buchung kann bis zum Monatsabschluss geändert oder gelöscht werden. Dabei wird nicht „alt zurück, dann neu“, sondern die **Nettowirkung** gegen die Ansatzsperre geprüft. Eine stornierte Buchung und ein Storno sind nicht änderbar; ein Storno kann gelöscht werden.
 17. Korrekturen in abgeschlossenen Monaten erfolgen durch Storno: eine Minusbuchung auf derselben Seite im offenen Zeitraum, verknüpft über `reversal_of_id`. Ein Storno kann nicht erneut storniert werden.
 18. Neue Buchungen sind nur auf aktive Konten und Kostenstellen möglich; ein Storno darf auch auf inzwischen deaktivierte Stellen buchen.
+19. Der Kontostand ist Anfangssaldo plus Bewegung (Haben − Soll). Ein Konto hat höchstens einen manuell erfassten Vortrag; folgende Jahre leiten ihn ab (siehe Architekturvorgabe 2.10).
+20. Ein Vortrag ist nur editierbar, wenn das Konto kein Vorjahr hat und der Januar des Jahres nicht abgeschlossen ist. Auf ein Konto mit Vortrag wird nicht vor dem 01.01. des Vortragsjahres gebucht.
+21. Anfangssalden gehen in die Signatur des Januar-Abschlusses ein. Ohne Anfangssalden darf sich die Signatur nicht ändern (Rückwärtskompatibilität der Abschlüsse).
 
 ## 4. Planung und Ansatzsperre
 

@@ -421,6 +421,7 @@ def _signature_of_month(uow: UnitOfWork, year: int, month: int) -> str:
         month,
         uow.bookings.list_filtered(year, month),
         uow.plans.monthly_plans_for_month(year, month),
+        uow.opening_balances.list_all() if month == 1 else (),
     )
 
 

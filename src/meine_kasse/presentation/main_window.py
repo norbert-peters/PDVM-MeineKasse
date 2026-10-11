@@ -10,6 +10,7 @@ from meine_kasse.application.services.booking_control_service import BookingCont
 from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.closing_service import ClosingService
 from meine_kasse.application.services.master_data_service import MasterDataService
+from meine_kasse.application.services.opening_balance_service import OpeningBalanceService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
 from meine_kasse.domain.enums import BookingType
@@ -19,6 +20,7 @@ from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
 from meine_kasse.presentation.dialogs.booking_list_dialog import BookingListDialog
 from meine_kasse.presentation.dialogs.closing_dialog import ClosingDialog
 from meine_kasse.presentation.dialogs.cost_center_dialogs import CostCenterListDialog
+from meine_kasse.presentation.dialogs.opening_balances_dialog import OpeningBalancesDialog
 from meine_kasse.presentation.dialogs.planning_dialog import PlanningDialog
 from meine_kasse.presentation.dialogs.user_dialogs import UserListDialog
 
@@ -39,6 +41,7 @@ class MainWindow(QMainWindow):
         bookings: BookingService,
         planning: PlanningService,
         closing: ClosingService,
+        opening_balances: OpeningBalanceService,
     ) -> None:
         super().__init__()
         self.logout_requested = False
@@ -50,6 +53,7 @@ class MainWindow(QMainWindow):
         self._bookings = bookings
         self._planning = planning
         self._closing = closing
+        self._opening_balances = opening_balances
 
         self.setWindowTitle("Meine Kasse")
         self.resize(900, 600)
@@ -76,6 +80,7 @@ class MainWindow(QMainWindow):
         self._action(master_menu, "Kostenstellen", self._open_cost_centers)
         self._action(master_menu, "Konten", self._open_accounts)
         self._action(master_menu, "Anwender", self._open_users)
+        self._action(master_menu, "Kontenanfangssalden", self._open_opening_balances)
         master_menu.addSeparator()
         self._action(master_menu, "Buchungssteuerung", self._open_booking_control)
 
@@ -119,6 +124,11 @@ class MainWindow(QMainWindow):
 
     def _open_closing(self) -> None:
         ClosingDialog(self._closing, self._booking_control, self._login.user_id, self).exec()
+
+    def _open_opening_balances(self) -> None:
+        OpeningBalancesDialog(
+            self._opening_balances, self._booking_control, self._login.user_id, self
+        ).exec()
 
     def _open_booking_control(self) -> None:
         BookingControlDialog(self._booking_control, self._login.user_id, self).exec()

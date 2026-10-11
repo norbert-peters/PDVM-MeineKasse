@@ -10,6 +10,7 @@ from meine_kasse.application.services.booking_control_service import BookingCont
 from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.closing_service import ClosingService
 from meine_kasse.application.services.master_data_service import MasterDataService
+from meine_kasse.application.services.opening_balance_service import OpeningBalanceService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
 from meine_kasse.domain.enums import AccountType, CostCenterKind
@@ -95,6 +96,11 @@ def planning(uow_factory: Callable[[], UnitOfWork]) -> PlanningService:
 @pytest.fixture
 def closing(uow_factory: Callable[[], UnitOfWork]) -> ClosingService:
     return ClosingService(uow_factory, today=lambda: TODAY)
+
+
+@pytest.fixture
+def openings(uow_factory: Callable[[], UnitOfWork]) -> OpeningBalanceService:
+    return OpeningBalanceService(uow_factory, today=lambda: TODAY)
 
 
 @pytest.fixture

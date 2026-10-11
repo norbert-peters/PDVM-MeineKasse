@@ -26,6 +26,7 @@ Umgesetzt (erste Schritte):
 - Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü, Stammdaten-, Buchungs-, Planungs- und Abschlussdialoge
 
 - Wiedereröffnen von Abschlüssen nur in umgekehrter Reihenfolge, mit Pflichtbegründung und dauerhafter Dokumentation (Historie im Abschlussdialog)
+- Anfangssalden (Jahresvortrag) der Konten: editierbar ohne Vorjahr bis zum Abschluss des Januars, sonst aus dem Vorjahr abgeleitet
 
 Noch nicht umgesetzt: Auswertungen.
 
@@ -33,7 +34,7 @@ Ablauf eines Monats: Buchungen erfassen, Plan-Ist in der Planung ansehen, dann i
 
 Empfohlene Reihenfolge beim Einrichten: Kostenstellen anlegen, Ansätze und Monatswerte in der Kostenstellenplanung erfassen, danach in der Buchungssteuerung die Planung aktivieren. Ab dann ist der Haushaltsansatz fix und ändert sich nur durch Ansatzumbuchung. Eine Kostenstelle, die erst nach der Aktivierung angelegt wird, erhält ihren Ansatz über eine Ansatzumbuchung (z. B. aus einer Kostenstelle „Haushaltsreserve“).
 
-Hinweis: Der Kontostand ist der Saldo aus den Buchungen. Anfangsbestände sind noch nicht erfasst (offene fachliche Entscheidung).
+Hinweis: Der Kontostand ist Anfangssaldo plus Bewegung. Die Anfangssalden pflegen Sie im Menü „Stammdaten → Kontenanfangssalden“. Sie sind editierbar, solange das Konto kein Vorjahr hat und der Januar nicht abgeschlossen ist.
 
 ## Einrichten und Starten
 

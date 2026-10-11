@@ -226,7 +226,7 @@ class BookingDialog(MasterEditDialog):
                 )
             else:
                 balance = self._bookings.account_balance(entity_id)
-                label.setText(f"Kontostand (Saldo aus Buchungen): {format_euro(balance)}")
+                label.setText(f"Kontostand (inkl. Anfangssaldo): {format_euro(balance)}")
         except DomainError as error:
             label.setText(str(error))
 

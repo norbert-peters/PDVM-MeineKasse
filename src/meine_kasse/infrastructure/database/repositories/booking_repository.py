@@ -154,6 +154,23 @@ class SqlBookingRepository:
         )
         return int(self._session.scalar(statement) or 0)
 
+    def account_year_movements(self) -> Mapping[tuple[str, int], int]:
+        signed = case(
+            (BookingLegModel.side == Side.CREDIT.value, BookingModel.amount_cents),
+            else_=-BookingModel.amount_cents,
+        )
+        statement = (
+            select(BookingLegModel.account_id, BookingModel.fiscal_year, func.sum(signed))
+            .join(BookingModel, BookingModel.id == BookingLegModel.booking_id)
+            .where(BookingLegModel.account_id.is_not(None))
+            .group_by(BookingLegModel.account_id, BookingModel.fiscal_year)
+        )
+        return {
+            (account_id, year): int(total)
+            for account_id, year, total in self._session.execute(statement)
+            if account_id is not None
+        }
+
     def cost_center_actual_totals(self) -> Mapping[tuple[str, int, int], tuple[int, int]]:
         statement = (
             select(

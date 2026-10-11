@@ -157,6 +157,21 @@ Gegenüber „alles über Buchungen“ erzeugt dieser Weg keine Buchungen ohne f
 
 Zusätzliche Mittel (z. B. höheres Einkommen) werden über eine normale Kostenstelle „Haushaltsreserve“ der Art `STANDARD` abgebildet. Sie erhält ihren Ansatz wie jede andere Kostenstelle, und daraus wird per Ansatzumbuchung auf andere Kostenstellen verteilt. Es gibt keine Ansatzänderung ohne Gegenstelle und keine Sonderart für diese Kostenstelle.
 
+### 2.10 Anfangssalden der Konten (Jahresvortrag)
+
+Der **Kontostand** ist der Anfangssaldo (Vortrag) plus die Bewegung (Haben − Soll) aller Buchungen des Kontos. Anfangssalden sind vorzeichenbehaftet, ein überzogenes Konto ist also möglich.
+
+| Regel | Festlegung |
+| --- | --- |
+| Erfassung | Je Konto gibt es **höchstens einen** manuell erfassten Vortrag zum 01.01. eines Jahres (`account_opening_balances`). |
+| Vorjahr | Hat das Konto ein Vorjahr (Buchungen oder ein Vortrag in einem früheren Jahr), ist der Vortrag **nicht editierbar** und wird aus Vortrag plus Buchungen der Vorjahre abgeleitet. |
+| Editierbar bis | Ein manuell erfasster Vortrag ist editierbar, **bis der Januar des Jahres abgeschlossen ist** (oder das Jahr). Danach ist er gesperrt. Nach dem Wiedereröffnen des Januars ist er wieder editierbar. |
+| Verschieben | Ein Vortrag kann auf ein **früheres** Jahr verschoben werden, solange sein bisheriger Januar offen ist. Ein späteres Jahr ist nach einem Vortrag immer abgeleitet. |
+| Entfernen | Ein leeres Feld entfernt den Vortrag, der Kontostand beginnt dann bei 0,00 €. |
+| Kein Buchen davor | Auf ein Konto mit Vortrag kann nicht mit einem Buchungsdatum vor dem 01.01. des Vortragsjahres gebucht werden. |
+| Signatur | Im Januar-Abschluss gehen die Anfangssalden des Jahres in die Signatur ein. Ohne Anfangssalden bleibt die Signatur unverändert. |
+| Kontrollsumme | Die Kontrollsumme Konten gegen Kostenstellen (2.2) betrifft nur Bewegungen, Anfangssalden beeinflussen sie nicht. |
+
 ## 3. Systemarchitektur
 
 ```text
@@ -235,6 +250,7 @@ Meine Kasse/
 | `period_closures` | id, year, month, closed_on, signature |
 | `year_closures` | id, year, closed_on, signature |
 | `closure_reopenings` | id, name, kind (`MONTH`/`YEAR`), year, month, reopened_on, reopened_by_user_id, reason, previous_signature, previous_closed_on, previous_closed_by_user_id, signature_was_valid |
+| `account_opening_balances` | id, account_id (eindeutig), year, amount_cents (mit Vorzeichen); siehe 2.10 |
 | `audit_log` | id, name (Aktion), entity, entity_id, user_id, old_value, new_value; enthält nie Passwörter oder Hashes |
 
 Das erstmalige Passwort wird nur als Hash abgelegt. Es kann zurückgesetzt werden und erzwingt bei der ersten Anmeldung einen Wechsel.

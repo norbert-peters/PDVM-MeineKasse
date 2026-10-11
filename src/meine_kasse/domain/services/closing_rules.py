@@ -10,7 +10,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from meine_kasse.domain.entities import Booking, MonthlyPlan
+from meine_kasse.domain.entities import AccountOpeningBalance, Booking, MonthlyPlan
 from meine_kasse.domain.enums import ClosureKind
 from meine_kasse.domain.errors import ValidationError
 
@@ -99,32 +99,45 @@ def month_signature(
     month: int,
     bookings: Sequence[Booking],
     plans: Sequence[tuple[str, MonthlyPlan]],
+    openings: Sequence[AccountOpeningBalance] = (),
 ) -> str:
     """Signatur über alle Buchungen (inklusive Ansatzumbuchungen) und Monatsplanwerte eines Monats.
 
+    Im Januar gehen zusätzlich die Anfangssalden des Jahres ein, denn sie sind bis zum Abschluss
+    des Januars editierbar. Ohne Anfangssalden bleibt die Signatur unverändert.
     Die Reihenfolge der Eingabe spielt keine Rolle.
     """
-    return _digest(
-        {
-            "kind": "month",
-            "year": year,
-            "month": month,
-            "bookings": sorted((_booking_record(b) for b in bookings), key=lambda r: r["id"]),
-            "plans": sorted(
-                (
-                    {
-                        "cost_center_id": cost_center_id,
-                        "plan_cents": plan.plan_cents,
-                        "reserve_plan_cents": plan.reserve_plan_cents,
-                        "plan_mode": plan.plan_mode.value,
-                    }
-                    for cost_center_id, plan in plans
-                    if plan.month == month
-                ),
-                key=lambda r: r["cost_center_id"],
+    payload: dict[str, Any] = {
+        "kind": "month",
+        "year": year,
+        "month": month,
+        "bookings": sorted((_booking_record(b) for b in bookings), key=lambda r: r["id"]),
+        "plans": sorted(
+            (
+                {
+                    "cost_center_id": cost_center_id,
+                    "plan_cents": plan.plan_cents,
+                    "reserve_plan_cents": plan.reserve_plan_cents,
+                    "plan_mode": plan.plan_mode.value,
+                }
+                for cost_center_id, plan in plans
+                if plan.month == month
             ),
-        }
+            key=lambda r: r["cost_center_id"],
+        ),
+    }
+    january_openings = (
+        [
+            {"account_id": opening.account_id, "amount_cents": opening.amount_cents}
+            for opening in openings
+            if opening.year == year
+        ]
+        if month == 1
+        else []
     )
+    if january_openings:
+        payload["openings"] = sorted(january_openings, key=lambda r: r["account_id"])
+    return _digest(payload)
 
 
 def year_signature(year: int, month_signatures: Mapping[int, str]) -> str:

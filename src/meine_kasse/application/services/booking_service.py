@@ -331,11 +331,14 @@ class BookingService:
             )
 
     def account_balance(self, account_id: str) -> int:
-        """Saldo (Haben - Soll) aus den Buchungen. Ein Anfangsbestand ist noch nicht erfasst."""
+        """Kontostand = Anfangssaldo (Vortrag) + Bewegung (Haben - Soll) aller Buchungen."""
         with self._uow_factory() as uow:
             if uow.accounts.get(account_id) is None:
                 raise NotFoundError("Das Konto wurde nicht gefunden.")
-            return uow.bookings.account_balance_cents(account_id)
+            opening = uow.opening_balances.get(account_id)
+            return (opening.amount_cents if opening else 0) + uow.bookings.account_balance_cents(
+                account_id
+            )
 
     def period_status(self, booking_date: date) -> PeriodStatus:
         with self._uow_factory() as uow:
@@ -438,6 +441,12 @@ class BookingService:
                     raise NotFoundError("Das Konto wurde nicht gefunden.")
                 if not account.is_active and not allow_inactive:
                     raise ValidationError(f"Das Konto '{account.name}' ist inaktiv.")
+                opening = uow.opening_balances.get(account.id)
+                if opening is not None and booking_date.year < opening.year:
+                    raise ValidationError(
+                        f"Das Konto '{account.name}' beginnt mit dem Anfangssaldo zum "
+                        f"01.01.{opening.year}. Davor kann nicht gebucht werden."
+                    )
         if booking_type is BookingType.BUDGET_TRANSFER and reversal_of_id is None:
             validate_budget_transfer_allowed(
                 planning_enabled=control.planning_enabled,

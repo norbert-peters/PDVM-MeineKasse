@@ -11,6 +11,7 @@ from meine_kasse.infrastructure.database.models.master import (
     UserModel,
     YearClosureModel,
 )
+from meine_kasse.infrastructure.database.models.opening_balance import AccountOpeningBalanceModel
 from meine_kasse.infrastructure.database.models.plan import (
     CostCenterPlanModel,
     MonthlyActualModel,
@@ -19,6 +20,7 @@ from meine_kasse.infrastructure.database.models.plan import (
 
 __all__ = [
     "AccountModel",
+    "AccountOpeningBalanceModel",
     "AuditLogModel",
     "BookingControlModel",
     "BookingLegModel",

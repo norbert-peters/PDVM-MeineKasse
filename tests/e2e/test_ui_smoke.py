@@ -13,6 +13,9 @@ from meine_kasse.application.services.booking_control_service import (  # noqa: 
 from meine_kasse.application.services.booking_service import BookingService  # noqa: E402
 from meine_kasse.application.services.closing_service import ClosingService  # noqa: E402
 from meine_kasse.application.services.master_data_service import MasterDataService  # noqa: E402
+from meine_kasse.application.services.opening_balance_service import (  # noqa: E402
+    OpeningBalanceService,
+)
 from meine_kasse.application.services.planning_service import PlanningService  # noqa: E402
 from meine_kasse.application.services.user_service import UserService  # noqa: E402
 from meine_kasse.presentation.dialogs.change_password_dialog import (  # noqa: E402
@@ -89,6 +92,7 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
     bookings: BookingService,
     planning: PlanningService,
     closing: ClosingService,
+    openings: OpeningBalanceService,
 ) -> None:
     window = MainWindow(
         LoginResult("id", "Anna Muster", False),
@@ -99,6 +103,7 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
         bookings=bookings,
         planning=planning,
         closing=closing,
+        opening_balances=openings,
     )
     titles = [action.text() for action in window.menuBar().actions()]
     assert titles == ["&Datei", "&Stammdaten", "&Buchungen", "&Planung", "&Abschluss", "&Hilfe"]
@@ -112,6 +117,7 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
         ("Kostenstellen", True),
         ("Konten", True),
         ("Anwender", True),
+        ("Kontenanfangssalden", True),
         ("Buchungssteuerung", True),
     ]
     assert entries(2) == [
