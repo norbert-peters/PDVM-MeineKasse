@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind
+from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind, IncomeMode
 
 BOOKING_TYPE_LABELS = {
     BookingType.COST_CENTER_TO_ACCOUNT: "Kostenstelle → Konto",
@@ -57,6 +57,12 @@ ACCOUNT_TYPE_LABELS = {
 COST_CENTER_KIND_LABELS = {
     CostCenterKind.STANDARD: "Standard (mit Plan)",
     CostCenterKind.WITHOUT_PLAN: "Ohne Plan",
+    CostCenterKind.INCOME: "Einnahme",
+}
+
+INCOME_MODE_LABELS = {
+    IncomeMode.PLAN: "Nach Plan verfügbar (z. B. Rente)",
+    IncomeMode.ACTUAL: "Nur nach Ist verfügbar (z. B. Zinsen)",
 }
 
 

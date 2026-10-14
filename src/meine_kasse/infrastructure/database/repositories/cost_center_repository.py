@@ -4,8 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from meine_kasse.domain.entities import CostCenter
-from meine_kasse.domain.enums import CostCenterKind
+from meine_kasse.domain.enums import CostCenterKind, IncomeMode
 from meine_kasse.infrastructure.database.models import CostCenterModel
+
+
+def _mode_value(cost_center: CostCenter) -> str | None:
+    return None if cost_center.income_mode is None else cost_center.income_mode.value
 
 
 def _to_entity(model: CostCenterModel) -> CostCenter:
@@ -17,6 +21,7 @@ def _to_entity(model: CostCenterModel) -> CostCenter:
         kind=CostCenterKind(model.kind),
         notes=model.notes,
         is_active=model.is_active,
+        income_mode=None if model.income_mode is None else IncomeMode(model.income_mode),
     )
 
 
@@ -32,6 +37,7 @@ class SqlCostCenterRepository:
                 number=cost_center.number,
                 valid_from=cost_center.valid_from,
                 kind=cost_center.kind.value,
+                income_mode=_mode_value(cost_center),
                 notes=cost_center.notes,
                 is_active=cost_center.is_active,
             )
@@ -46,6 +52,7 @@ class SqlCostCenterRepository:
         model.number = cost_center.number
         model.valid_from = cost_center.valid_from
         model.kind = cost_center.kind.value
+        model.income_mode = _mode_value(cost_center)
         model.notes = cost_center.notes
         model.is_active = cost_center.is_active
         self._session.flush()

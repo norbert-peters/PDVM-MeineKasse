@@ -12,7 +12,7 @@ from meine_kasse.application.services.auth_service import AuthService  # noqa: E
 from meine_kasse.application.services.master_data_service import MasterDataService  # noqa: E402
 from meine_kasse.application.services.user_service import UserService  # noqa: E402
 from meine_kasse.domain.entities import User  # noqa: E402
-from meine_kasse.domain.enums import AccountType, CostCenterKind  # noqa: E402
+from meine_kasse.domain.enums import AccountType, CostCenterKind, IncomeMode  # noqa: E402
 from meine_kasse.domain.repositories import UnitOfWork  # noqa: E402
 from meine_kasse.presentation.dialogs.account_dialogs import (  # noqa: E402
     AccountEditDialog,
@@ -140,6 +140,55 @@ def test_cost_center_edit_dialog_locks_the_kind(
     dialog.name_edit.setText("Umbenannt")
     _save(dialog)
     assert master_data.get_cost_center(cost_center_id).name == "Umbenannt"
+
+
+def test_cost_center_dialog_creates_income_cost_center_with_mode(
+    qapp: QApplication, master_data: MasterDataService
+) -> None:
+    dialog = CostCenterEditDialog(master_data, "actor")
+    assert dialog.mode_combo.isHidden() is True
+
+    dialog.number_edit.setText("900")
+    dialog.name_edit.setText("Zinsen")
+    dialog.valid_from_edit.setDate(QDate(2026, 1, 1))
+    dialog.kind_combo.setCurrentIndex(dialog.kind_combo.findData(CostCenterKind.INCOME.value))
+    assert dialog.mode_combo.isHidden() is False
+    dialog.mode_combo.setCurrentIndex(dialog.mode_combo.findData(IncomeMode.ACTUAL.value))
+    _save(dialog)
+
+    (created,) = master_data.list_cost_centers()
+    assert created.kind is CostCenterKind.INCOME
+    assert created.income_mode is IncomeMode.ACTUAL
+
+
+def test_cost_center_edit_dialog_locks_the_income_mode(
+    qapp: QApplication, master_data: MasterDataService
+) -> None:
+    cost_center_id = master_data.create_cost_center(
+        number="900",
+        name="Rente",
+        valid_from=QDate(2026, 1, 1).toPython(),
+        kind=CostCenterKind.INCOME,
+        income_mode=IncomeMode.PLAN,
+    )
+    dialog = CostCenterEditDialog(master_data, "actor", cost_center_id)
+
+    assert dialog.mode_combo.isHidden() is False
+    assert dialog.mode_combo.isEnabled() is False
+    assert dialog.mode_combo.currentData() == IncomeMode.PLAN.value
+
+
+def test_cost_center_list_shows_the_income_kind(
+    qapp: QApplication, master_data: MasterDataService
+) -> None:
+    master_data.create_cost_center(
+        number="900",
+        name="Rente",
+        valid_from=QDate(2026, 1, 1).toPython(),
+        kind=CostCenterKind.INCOME,
+    )
+
+    assert _row_texts(CostCenterListDialog(master_data, "actor"))[0][2] == "Einnahme"
 
 
 def test_cost_center_list_hides_inactive_until_requested(

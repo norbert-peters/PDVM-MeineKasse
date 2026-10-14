@@ -136,7 +136,7 @@ def test_main_window_menu_enables_implemented_entries_and_keeps_planned_ones_dis
         ("Buchung erfassen", True),
         ("Ansatzumbuchung", True),
     ]
-    assert entries(3) == [("Kostenstellenplanung", True)]
+    assert entries(3) == [("Kostenstellenplanung", True), ("Einnahmenplanung", True)]
     assert entries(4) == [("Monats- und Jahresabschluss", True)]
     assert "Anna Muster" in window.statusBar().currentMessage()
 

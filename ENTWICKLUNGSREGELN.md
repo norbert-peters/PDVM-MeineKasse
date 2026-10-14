@@ -19,7 +19,7 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 5. Fremdschlüssel sind je Verbindung aktiviert, SQL-Parameter sind immer gebunden.
 6. Fachlich relevante Stammdaten werden deaktiviert statt gelöscht. Inaktive Stammdaten sind für neue Buchungen nicht mehr wählbar und in Listen standardmäßig ausgeblendet.
 7. Jede Änderung an Stammdaten wird mit Anwender und geänderten Feldern im Audit-Protokoll festgehalten. Werte von IBAN und Anschrift werden dabei nie protokolliert, nur der Hinweis „(geändert)“.
-8. Die Kostenstellenart (`STANDARD` / `WITHOUT_PLAN`) ist nach dem Anlegen fest, weil sie Planung und Ansatzsperre bestimmt. Nummern dürfen geändert werden, da Verbindungen über die GUID laufen, müssen aber eindeutig bleiben.
+8. Die Kostenstellenart (`STANDARD` / `WITHOUT_PLAN` / `INCOME`) und bei `INCOME` der Modus sind nach dem Anlegen fest, weil sie Planung und Ansatzsperre bestimmen. Nummern dürfen geändert werden, da Verbindungen über die GUID laufen, müssen aber eindeutig bleiben.
 9. Ein Anwender kann sich nicht selbst deaktivieren, und es bleibt immer mindestens ein aktiver Anwender bestehen.
 
 ## 3. Beträge und Buchungen
@@ -66,6 +66,7 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 16. Die Ist-Fortschreibung einer Kostenstelle richtet sich nach dem Entstehungsdatum (Planperiode), Konten, Abschlüsse und Signatur nach dem Buchungsdatum. Das Planjahr muss existieren und offen sein, sonst wird nicht gebucht (Architekturvorgabe 2.11).
 17. Rückstellungen sind virtuell und werden in reinen Domain-Funktionen (`reserve_rules`) aus Zuführungen, Vortrag und den Monatssummen der Ist-Bewegung berechnet; der Bestand ist nie negativ. Zuführungen werden maschinell verteilt, manuelle (`reserve_is_manual`) und abgeschlossene Monate bleiben unverändert. Entlastung und Vorträge sind Projektionen, die in derselben Transaktion wie die Buchung fortgeschrieben werden (`reserve_projection`), beim Neuaufbau und beim Programmstart neu berechnet werden und der Abschlussprüfung unterliegen. Eine zu geringe Rückstellung führt nur zu einem Hinweis, nie zu einer Sperre.
 18. Die Planungsart wird nicht mehr bedient; `plan_mode` bleibt wegen der Signatur unverändert im Schema und wird beim Speichern durchgereicht.
+19. Einnahmen-Kostenstellen (`INCOME`, Architekturvorgabe 2.15) haben Plan (erwartete Einnahme je Monat) und Ist, aber keinen Ansatz, keine Rückstellung und keine Ansatzsperre. Verfügbarkeit und Deckung sind reine Domain-Funktionen (`income_rules`); der Modus (`PLAN`/`ACTUAL`) ist nach dem Anlegen fest. Die Weitergabe ist ein negativer `budget_transfer_cents`; eine Einnahmenstelle gibt nur ab, nie an `INCOME` oder `WITHOUT_PLAN`, und der weitergegebene Betrag muss durch Plan bzw. Ist gedeckt bleiben.
 
 ## 4a. Abschluss
 

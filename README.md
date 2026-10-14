@@ -22,6 +22,7 @@ Umgesetzt (erste Schritte):
 - Plan-Ist-Fortschreibung und Ansatzsperre in einer Transaktion mit der Buchung, Neuaufbau der Projektionen aus den Buchungen
 - Buchungssteuerung (aktueller Buchungsmonat, Planung ein/aus) und Buchungsliste mit sichtbarem Monatsstatus (frei/fix)
 - Planung je Kostenstelle: Haushaltsansatz, Monatswerte (Plan-Ansatz, Art, Rückstellung Plan), Rückstellungsüberträge, Soll-/Ist-Vergleich je Monat; Eingabehilfen „gleichmäßig verteilen“ und „Quartalsbeträge“
+- Einnahmenplanung: Kostenstellen der Art „Einnahme“ (z. B. Rente, PV-Entgelt, Orgelspiel, Zinsen) mit erwarteter Einnahme je Monat, Vergleich mit der gebuchten Einnahme und Weitergabe per Ansatzumbuchung an Kostenstellen mit Plan; Modus „nach Plan verfügbar“ oder „nur nach Ist verfügbar“
 - Monats- und Jahresabschluss mit SHA-256-Signatur, lückenloser Reihenfolge, Konsistenzprüfung vor dem Abschluss und Integritätsprüfung aller Abschlüsse
 - Oberfläche: Erstanwender, Login, Passwortwechsel, Hauptmenü, Stammdaten-, Buchungs-, Planungs- und Abschlussdialoge
 
@@ -32,7 +33,7 @@ Noch nicht umgesetzt: Auswertungen.
 
 Ablauf eines Monats: Buchungen erfassen, Plan-Ist in der Planung ansehen, dann im Menü „Abschluss“ den aktuellen Buchungsmonat abschließen. Der Buchungsmonat rückt automatisch auf den Folgemonat. Sind alle zwölf Monate abgeschlossen, kann das Jahr abgeschlossen werden. Wer mitten im Jahr beginnt, setzt den Buchungsmonat in der Buchungssteuerung auf Januar und schließt die leeren Monate nacheinander ab.
 
-Empfohlene Reihenfolge beim Einrichten: Kostenstellen anlegen, Ansätze und Monatswerte in der Kostenstellenplanung erfassen, danach in der Buchungssteuerung die Planung aktivieren. Ab dann ist der Haushaltsansatz fix und ändert sich nur durch Ansatzumbuchung. Eine Kostenstelle, die erst nach der Aktivierung angelegt wird, erhält ihren Ansatz über eine Ansatzumbuchung (z. B. aus einer Kostenstelle „Haushaltsreserve“).
+Empfohlene Reihenfolge beim Einrichten: Kostenstellen anlegen, Ansätze und Monatswerte in der Kostenstellenplanung erfassen, danach in der Buchungssteuerung die Planung aktivieren. Ab dann ist der Haushaltsansatz fix und ändert sich nur durch Ansatzumbuchung. Eine Kostenstelle, die erst nach der Aktivierung angelegt wird, erhält ihren Ansatz über eine Ansatzumbuchung (z. B. aus einer Kostenstelle „Haushaltsreserve“). Einnahmen (Rente, PV-Entgelt, Orgelspiel, Zinsen) legen Sie als Kostenstelle der Art „Einnahme“ an, planen sie unter „Planung → Einnahmenplanung“ und geben sie per Ansatzumbuchung an Kostenstellen mit Plan weiter; bei „nur nach Ist verfügbar“ (z. B. Zinsen) ist nur die bereits gebuchte Einnahme umbuchbar.
 
 Hinweis: Der Kontostand ist Anfangssaldo plus Bewegung. Die Anfangssalden pflegen Sie im Menü „Stammdaten → Kontenanfangssalden“. Sie sind editierbar, solange das Konto kein Vorjahr hat und der Januar nicht abgeschlossen ist.
 

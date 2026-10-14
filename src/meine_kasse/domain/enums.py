@@ -31,6 +31,14 @@ class AccountType(StrEnum):
 class CostCenterKind(StrEnum):
     STANDARD = "STANDARD"
     WITHOUT_PLAN = "WITHOUT_PLAN"
+    INCOME = "INCOME"
+
+
+class IncomeMode(StrEnum):
+    """Wann eine Einnahme per Ansatzumbuchung weitergegeben werden darf (Vorgabe 2.15)."""
+
+    PLAN = "PLAN"
+    ACTUAL = "ACTUAL"
 
 
 class PlanMode(StrEnum):

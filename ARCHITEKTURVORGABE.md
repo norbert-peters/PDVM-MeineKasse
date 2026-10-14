@@ -11,7 +11,7 @@ Umfang des ersten Ausbaustands:
 - Anmeldung mit lokal verwalteten Anwendern (ohne Berechtigungskonzept), danach Hauptmenü
 - Stammdaten und Steuerung: Kostenstellen, Konten, Anwender, Buchungssteuerung
 - Buchungen mit Soll/Haben, positiven **und negativen** Beträgen
-- Planung je Kostenstelle (Jahressumme, Monatswerte, Rückstellungen)
+- Planung je Kostenstelle (Jahressumme, Monatswerte, Rückstellungen) sowie Einnahmenplanung auf Einnahmen-Kostenstellen (2.15)
 - Soll-/Ist-Abgleich direkt bei jeder Buchung mit **Sperre bei Überschreitung des Ansatzes**
 - Ansatzumbuchungen zwischen Kostenstellen
 - Monats- und Jahresabschluss mit Signaturen
@@ -80,7 +80,7 @@ Beispiele:
 | Storno/Korrektur | Eine Buchung wird durch eine **Minusbuchung auf derselben Seite** (gleiche Stellen, Betrag mit umgekehrtem Vorzeichen) korrigiert, verknüpft über `reversal_of_booking_id`. Das entspricht dem klassischen Rotstorno und verändert die Seite nicht. | festgelegt |
 | Vorzeichen von Planwerten | Planwerte (Jahresansatz, Monatsplan, Rückstellungsplan, Übertrag) werden in Soll-Richtung geführt, also mit **derselben Konvention** wie Ist-Werte. Der Jahresansatz ist immer ≥ 0. Plan und Ist sind damit ohne Umrechnung vergleichbar. | festgelegt |
 | Überschreitung | Eine Überschreitung des Jahresansatzes **sperrt** die Buchung (siehe 2.7). | festgelegt |
-| Einnahmen/Ausgaben | Kostenstellen und Konten werden **nicht** als Einnahme- oder Ausgabeobjekt gekennzeichnet. Einnahmen und Erstattungen sind Haben- bzw. Minusbuchungen und entlasten die Kostenstelle über die Vorzeichenlogik. | festgelegt |
+| Einnahmen/Ausgaben | Kostenstellen und Konten werden **nicht** als Einnahme- oder Ausgabeobjekt gekennzeichnet. Einnahmen und Erstattungen sind Haben- bzw. Minusbuchungen und entlasten die Kostenstelle über die Vorzeichenlogik. **Ausnahme:** Planbare und nicht planbare Einnahmen (Rente, Entgelte, Zinsen) liegen auf Kostenstellen der Art `INCOME` (2.15). | festgelegt |
 
 ### 2.4 Buchungsarten
 
@@ -123,7 +123,7 @@ Konten- und Kostenstellensalden sind aus den Buchungen berechenbar. Gespeicherte
 
 1. Eine Ist-Buchung wird abgelehnt, wenn sie die Ist-Bewegung erhöht und der Haushaltsrest danach kleiner als 0 wäre. Buchungen mit entlastender Wirkung (Haben, Minusbuchungen) werden nie gesperrt.
 2. Eine Ansatzumbuchung wird abgelehnt, wenn bei der abgebenden Kostenstelle danach der Jahresansatz kleiner als 0, kleiner als die Ist-Bewegung oder kleiner als der verteilte Ansatz wäre.
-3. Ansatzumbuchungen sind nur bei aktivierter Planung, zwischen zwei verschiedenen `STANDARD`-Kostenstellen und in einem offenen Zeitraum möglich.
+3. Ansatzumbuchungen sind nur bei aktivierter Planung, zwischen zwei verschiedenen Kostenstellen der Art `STANDARD` und in einem offenen Zeitraum möglich. Zusätzlich darf eine Kostenstelle der Art `INCOME` als **abgebende** Stelle an eine `STANDARD`-Kostenstelle umbuchen (2.15); sie erhält nie Ansatz.
 4. Die Fehlermeldung nennt Haushaltsrest und fehlenden Betrag und verweist auf die Ansatzumbuchung. Die Buchungsmaske bietet dafür direkt den Einstieg an.
 5. Der Monatsplan sperrt nicht, sondern wird nur als Abweichung angezeigt. Das ist festgelegt, da bei unregelmäßigen Ausgaben und Rückstellungen eine monatliche Sperre unpraktisch wäre.
 6. Die Prüfung und die Buchung erfolgen in derselben Transaktion (mit sofortiger Schreibsperre, `BEGIN IMMEDIATE`), damit keine Überschreitung durch parallele Vorgänge entsteht.
@@ -244,6 +244,26 @@ Regeln:
 3. Die Differenz Betriebsmittelsaldo ↔ Rückstellungsbestand ist eine Kontrollgröße, keine Sperre.
 4. Der Dialog ist lesend; nur der erwartete Kontostand ist editierbar.
 
+### 2.15 Einnahmen-Kostenstellen (`INCOME`)
+
+Einnahmen wie Rente, PV-Entgelt, Entgelt für Orgelspiel oder Zinsen haben keinen Jahresansatz. Sie werden **erwartet** (Plan) und **gebucht** (Ist) und erst durch eine Ansatzumbuchung zum Ansatz einer Kostenstelle mit Plan. Dafür gibt es die Kostenstellenart `INCOME` mit dem Modus `income_mode`.
+
+| Aspekt | Festlegung |
+| --- | --- |
+| Art und Modus | `kind = INCOME`, dazu `income_mode` (`PLAN` oder `ACTUAL`, Standard `PLAN`). Art und Modus sind nach dem Anlegen fest. Bei allen anderen Arten ist `income_mode` leer. |
+| Plan | `monthly_plans.plan_cents` ist die **erwartete Einnahme** des Monats (≥ 0). Es gibt keine Rückstellung (`reserve_plan_cents` = 0), keinen Basisansatz (`base_budget_cents` = 0) und keine Verteilungsgrenze. Die Planung läuft im eigenen Dialog „Einnahmenplanung“ (Gleichmäßig verteilen als Eingabehilfe, abgeschlossene Monate gesperrt). |
+| Ist | Buchung Kostenstelle → Konto, Haben auf der Einnahmenstelle. Ist-Einnahme = Haben − Soll. Die Planperiode folgt dem Entstehungsdatum (2.11). Es gibt weder Ansatzsperre noch Planjahrprüfung; eine Einnahme ist auch ohne Plan buchbar. |
+| Abgleich | Je Monat Plan, Ist und Abweichung (Ist − Plan) nur als Anzeige. Noch erwartet = Summe je Monat von (Plan − Ist-Einnahme), nie negativ. |
+| Weitergabe | Die Ansatzumbuchung der Einnahmenstelle an eine `STANDARD`-Kostenstelle steht als negativer `budget_transfer_cents` im Jahresplan der Einnahmenstelle (weitergegeben = −`budget_transfer_cents`). |
+| Verfügbar `PLAN` | Verlässliche Einnahme (z. B. Rente): umbuchbar ist der Jahresplan, mindestens aber die bereits gebuchte Einnahme. |
+| Verfügbar `ACTUAL` | Unsichere Einnahme (z. B. Zinsen, Orgelspiel): umbuchbar ist nur die bereits gebuchte Einnahme (Vorsichtsprinzip). |
+| Noch umbuchbar | verfügbar − bereits weitergegeben. Eine Umbuchung darüber wird mit Hinweis auf den möglichen Betrag abgelehnt. |
+| Deckung | Der weitergegebene Betrag muss gedeckt bleiben: Ein Plan, der unter ihn sinkt, sowie das Verringern, Löschen oder Stornieren von Einnahmebuchungen unter ihn wird abgelehnt. Vorher ist die Umbuchung per Storno zurückzunehmen. |
+| Nicht planbar | Eine nicht erwartete Einnahme (Plan 0) wird nach Eingang gebucht und, bei Modus `ACTUAL`, per Ansatzumbuchung auf die Haushaltsreserve (2.9) oder eine andere Kostenstelle verteilt. |
+| Abschluss | Plan und Ist der Einnahmenstelle gehen wie bei jeder Kostenstelle in die Monatssignatur ein (2.5). |
+
+Mit `INCOME` als Empfänger sind Ansatzumbuchungen nicht möglich, ebenso nicht zwischen zwei Einnahmenstellen und nicht an `WITHOUT_PLAN`.
+
 ### 2.14 Bedienung, Tabellen, Ausgabe und Auswertungen
 
 **Eingaben**
@@ -360,7 +380,7 @@ Meine Kasse/
 | Tabelle | Wesentliche Felder |
 | --- | --- |
 | `users` | id, name, last_name, first_name, address, password_hash, initial_password_hash, must_change_password, password_changed_at |
-| `cost_centers` | id, name, number, valid_from, kind (`STANDARD` / `WITHOUT_PLAN`), notes |
+| `cost_centers` | id, name, number, valid_from, kind (`STANDARD` / `WITHOUT_PLAN` / `INCOME`), income_mode (`PLAN` / `ACTUAL`, genau bei `INCOME` gesetzt), notes |
 | `accounts` | id, name, number, account_type (`CHECKING`, `SAVINGS`, `INVESTMENT`, `RESERVE`), bank_name, owner_name, iban, cash_role (`NONE`, `CENTRAL_PAYMENT`, `OPERATING_FUNDS`; je Rolle höchstens ein Konto) |
 | `booking_control` | id, is_active (genau ein aktiver Datensatz), planning_enabled, current_year, current_month, last_closed_year, last_closed_month |
 | `period_closures` | id, year, month, closed_on, signature |
@@ -452,9 +472,10 @@ Mit Version 3 festgelegt (Entscheidungen E1–E7, Details in [ANALYSE_TESTERGEBN
 3. **Cash-Management** (2.13): erwarteter Kontostand je Konto und Monat (E3), geplante Ausgaben in zwei Spalten (E4).
 4. **Auswertungen** (2.14): Datenquellen und Summierbarkeit von Spalten; PDF mit `reportlab` (E7).
 5. **Kostenstellenart „ohne Plan“** bleibt bestehen (E5). Sie dient Konten bzw. Kostenstellen, die nicht von vornherein planbar sind, z. B. durchlaufende Posten.
+6. **Einnahmen-Kostenstellen** (2.15): Kostenstellenart `INCOME` mit den Modi `PLAN` (verfügbar nach Plan) und `ACTUAL` (verfügbar nur nach Ist). Einnahmen werden geplant und gebucht und per Ansatzumbuchung weitergegeben.
 
 Noch offen aus früheren Versionen:
 
 1. **Planübertrag des Ansatzes:** Kontoanfangssalden sind in 2.10 geregelt, der Rückstellungsvortrag in 2.12. Offen bleibt der Planübertrag des Ansatzes.
-2. **Weitere Kostenstellenarten:** neben `STANDARD` und `WITHOUT_PLAN` (Durchlaufposten u. Ä.) sind keine weiteren Arten vorgesehen; Bedarf wird bei Auftreten benannt.
+2. **Weitere Kostenstellenarten:** neben `STANDARD`, `WITHOUT_PLAN` (Durchlaufposten u. Ä.) und `INCOME` (2.15) sind keine weiteren Arten vorgesehen; Bedarf wird bei Auftreten benannt.
 3. **Mehrbenutzerbetrieb:** SQLite eignet sich für lokale Einzelplatznutzung. Bei paralleler Nutzung mehrerer Anwender ist ein Datenbankwechsel einzuplanen.

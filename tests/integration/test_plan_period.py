@@ -3,8 +3,6 @@
 from datetime import date
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import select
 
 from conftest import World
@@ -14,7 +12,7 @@ from meine_kasse.application.services.closing_service import ClosingService
 from meine_kasse.domain.enums import BookingType, ObjectKind, Side
 from meine_kasse.domain.errors import BudgetExceededError, PeriodError, PlanPeriodError
 from meine_kasse.domain.services.booking_rules import Stelle
-from meine_kasse.infrastructure.database.migrate import MIGRATIONS_DIR, upgrade_database
+from meine_kasse.infrastructure.database.migrate import downgrade_database, upgrade_database
 from meine_kasse.infrastructure.database.models import (
     BookingModel,
     CostCenterPlanModel,
@@ -353,11 +351,7 @@ def test_migration_rebuilds_projection_by_origin_date(
                 row.debit_cents = 999  # veralteter Stand nach Buchungsmonat
         session.commit()
 
-    config = Config()
-    config.set_main_option("script_location", str(MIGRATIONS_DIR))
-    with database.engine.begin() as connection:
-        config.attributes["connection"] = connection
-        command.downgrade(config, "0004")
+    downgrade_database(database.engine, "0004")
     upgrade_database(database.engine)
 
     assert _actuals(database) == expected

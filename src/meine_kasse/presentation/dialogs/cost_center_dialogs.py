@@ -12,10 +12,14 @@ from PySide6.QtWidgets import (
 )
 
 from meine_kasse.application.services.master_data_service import MasterDataService
-from meine_kasse.domain.enums import CostCenterKind
+from meine_kasse.domain.enums import CostCenterKind, IncomeMode
 from meine_kasse.presentation.dialogs.master_edit_dialog import MasterEditDialog
 from meine_kasse.presentation.dialogs.master_list_dialog import ListRow, MasterListDialog
-from meine_kasse.presentation.labels import COST_CENTER_KIND_LABELS, format_date
+from meine_kasse.presentation.labels import (
+    COST_CENTER_KIND_LABELS,
+    INCOME_MODE_LABELS,
+    format_date,
+)
 from meine_kasse.presentation.widgets.data_table import TablePreferences
 
 
@@ -42,6 +46,9 @@ class CostCenterEditDialog(MasterEditDialog):
         self.kind_combo = QComboBox()
         for kind, label in COST_CENTER_KIND_LABELS.items():
             self.kind_combo.addItem(label, kind.value)
+        self.mode_combo = QComboBox()
+        for mode, mode_label in INCOME_MODE_LABELS.items():
+            self.mode_combo.addItem(mode_label, mode.value)
         self.notes_edit = QPlainTextEdit()
         self.notes_edit.setFixedHeight(80)
 
@@ -49,7 +56,9 @@ class CostCenterEditDialog(MasterEditDialog):
         self.form.addRow("Name:", self.name_edit)
         self.form.addRow("Kostenstelle ab:", self.valid_from_edit)
         self.form.addRow("Art:", self.kind_combo)
+        self.form.addRow("Einnahme verfügbar:", self.mode_combo)
         self.form.addRow("Bemerkungen:", self.notes_edit)
+        self.kind_combo.currentIndexChanged.connect(lambda _index: self._sync_mode())
 
         if cost_center_id is not None:
             current = service.get_cost_center(cost_center_id)
@@ -60,10 +69,19 @@ class CostCenterEditDialog(MasterEditDialog):
             )
             self.kind_combo.setCurrentIndex(self.kind_combo.findData(current.kind.value))
             self.kind_combo.setEnabled(False)
+            if current.income_mode is not None:
+                self.mode_combo.setCurrentIndex(self.mode_combo.findData(current.income_mode.value))
             self.notes_edit.setPlainText(current.notes)
             hint = QLabel("Die Art kann nach dem Anlegen nicht mehr geändert werden.")
             hint.setStyleSheet("color: #606060;")
             self.form.addRow("", hint)
+        self._sync_mode()
+
+    def _sync_mode(self) -> None:
+        """Den Modus gibt es nur bei Einnahmen; nach dem Anlegen ist er fest."""
+        is_income = self.kind_combo.currentData() == CostCenterKind.INCOME.value
+        self.mode_combo.setEnabled(is_income and self._cost_center_id is None)
+        self.form.setRowVisible(self.mode_combo, is_income)
 
     def save(self) -> None:
         qdate = self.valid_from_edit.date()
@@ -76,6 +94,11 @@ class CostCenterEditDialog(MasterEditDialog):
                 name=self.name_edit.text(),
                 valid_from=valid_from,
                 kind=kind,
+                income_mode=(
+                    IncomeMode(self.mode_combo.currentData())
+                    if kind is CostCenterKind.INCOME
+                    else None
+                ),
                 notes=notes,
                 actor_id=self._actor_id,
             )

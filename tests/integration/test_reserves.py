@@ -490,10 +490,7 @@ def test_preview_does_not_write_anything(
 
 
 def test_migration_marks_existing_reserves_as_manual(database: Database, world: World) -> None:
-    from alembic import command
-    from alembic.config import Config
-
-    from meine_kasse.infrastructure.database.migrate import MIGRATIONS_DIR, upgrade_database
+    from meine_kasse.infrastructure.database.migrate import downgrade_database, upgrade_database
 
     with database.session_factory() as session:
         plan = CostCenterPlanModel(cost_center_id=world.cc_a, year=YEAR, base_budget_cents=1000)
@@ -502,12 +499,8 @@ def test_migration_marks_existing_reserves_as_manual(database: Database, world: 
         session.add(MonthlyPlanModel(cost_center_plan_id=plan.id, month=1, reserve_plan_cents=500))
         session.add(MonthlyPlanModel(cost_center_plan_id=plan.id, month=2, plan_cents=100))
         session.commit()
-    config = Config()
-    config.set_main_option("script_location", str(MIGRATIONS_DIR))
-    with database.engine.begin() as connection:
-        config.attributes["connection"] = connection
-        command.downgrade(config, "0005")
-        command.upgrade(config, "0006")
+    downgrade_database(database.engine, "0005")
+    upgrade_database(database.engine, "0006")
     upgrade_database(database.engine)
 
     with database.session_factory() as session:

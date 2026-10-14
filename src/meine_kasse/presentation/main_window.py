@@ -26,6 +26,7 @@ from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
 from meine_kasse.presentation.dialogs.booking_list_dialog import BookingListDialog
 from meine_kasse.presentation.dialogs.closing_dialog import ClosingDialog
 from meine_kasse.presentation.dialogs.cost_center_dialogs import CostCenterListDialog
+from meine_kasse.presentation.dialogs.income_planning_dialog import IncomePlanningDialog
 from meine_kasse.presentation.dialogs.opening_balances_dialog import OpeningBalancesDialog
 from meine_kasse.presentation.dialogs.planning_dialog import PlanningDialog
 from meine_kasse.presentation.dialogs.user_dialogs import UserListDialog
@@ -107,6 +108,7 @@ class MainWindow(QMainWindow):
 
         planning_menu = bar.addMenu("&Planung")
         self._action(planning_menu, "Kostenstellenplanung", self._open_planning)
+        self._action(planning_menu, "Einnahmenplanung", self._open_income_planning)
         closing_menu = bar.addMenu("&Abschluss")
         self._action(closing_menu, "Monats- und Jahresabschluss", self._open_closing)
 
@@ -143,6 +145,11 @@ class MainWindow(QMainWindow):
 
     def _open_planning(self) -> None:
         PlanningDialog(self._planning, self._booking_control, self._login.user_id, self).exec()
+
+    def _open_income_planning(self) -> None:
+        IncomePlanningDialog(
+            self._planning, self._booking_control, self._login.user_id, self
+        ).exec()
 
     def _open_closing(self) -> None:
         ClosingDialog(self._closing, self._booking_control, self._login.user_id, self).exec()

@@ -52,12 +52,22 @@ def validate_budget_transfer_allowed(
     *,
     planning_enabled: bool,
     kinds: tuple[CostCenterKind, CostCenterKind],
+    donor_is_leading: bool = True,
 ) -> None:
+    """Ansatzumbuchung nur zwischen Kostenstellen mit Plan. Eine Einnahmenstelle darf nur
+    abgeben (nie erhalten) und nur an eine Kostenstelle der Art `STANDARD`."""
     if not planning_enabled:
         raise ValidationError("Ansatzumbuchungen sind nur bei aktivierter Planung möglich.")
-    if any(kind is not CostCenterKind.STANDARD for kind in kinds):
+    allowed = (CostCenterKind.STANDARD, CostCenterKind.INCOME)
+    if any(kind not in allowed for kind in kinds):
         raise ValidationError(
             "Ansatzumbuchungen sind nur zwischen Kostenstellen mit Planung möglich."
+        )
+    receiver = kinds[1] if donor_is_leading else kinds[0]
+    if receiver is not CostCenterKind.STANDARD:
+        raise ValidationError(
+            "Eine Einnahmen-Kostenstelle kann nur Ansatz abgeben, nicht erhalten. "
+            "Empfänger muss eine Kostenstelle mit Plan (Standard) sein."
         )
 
 

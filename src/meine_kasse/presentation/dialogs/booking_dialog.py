@@ -17,7 +17,7 @@ from meine_kasse.application.services.booking_service import (
     PeriodState,
 )
 from meine_kasse.application.services.master_data_service import MasterDataService
-from meine_kasse.domain.enums import BookingType, ObjectKind, Side
+from meine_kasse.domain.enums import BookingType, IncomeMode, ObjectKind, Side
 from meine_kasse.domain.errors import DomainError, PlanPeriodError, ValidationError
 from meine_kasse.domain.services.booking_rules import Stelle
 from meine_kasse.domain.value_objects.money import format_euro, parse_euro
@@ -324,6 +324,13 @@ def _amount(text: str) -> int:
 
 
 def _describe_cost_center(info: CostCenterInfo) -> str:
+    if info.income_mode is not None:
+        basis = "nach Plan" if info.income_mode is IncomeMode.PLAN else "nur nach Ist"
+        return (
+            f"Einnahme {info.year}: gebucht {format_euro(info.income_realized_cents)} · "
+            f"Plan {format_euro(info.income_planned_cents)} · "
+            f"umbuchbar {format_euro(info.income_free_cents)} ({basis})"
+        )
     reserve = f"Rückstellungsbestand (bis Monat): {format_euro(info.reserve_cents)}"
     if not info.planning_active:
         return (

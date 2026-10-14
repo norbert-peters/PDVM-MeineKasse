@@ -12,6 +12,7 @@ from enum import StrEnum
 
 from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.services.booking_control_service import load_or_create_control
+from meine_kasse.application.services.income_position import income_position
 from meine_kasse.application.services.reserve_projection import (
     apply_projection,
     project_cost_center,
@@ -25,7 +26,7 @@ from meine_kasse.domain.entities import (
     CostCenterPlan,
     MonthlyActual,
 )
-from meine_kasse.domain.enums import BookingType, ObjectKind, Side
+from meine_kasse.domain.enums import BookingType, CostCenterKind, IncomeMode, ObjectKind, Side
 from meine_kasse.domain.errors import NotFoundError, PeriodError, PlanPeriodError, ValidationError
 from meine_kasse.domain.identifiers import new_id
 from meine_kasse.domain.repositories import UnitOfWork
@@ -43,6 +44,7 @@ from meine_kasse.domain.services.budget_rules import (
     is_checked,
     validate_budget_transfer_allowed,
 )
+from meine_kasse.domain.services.income_rules import check_coverage, check_pass_on
 from meine_kasse.domain.services.period_rules import (
     bookable_window,
     ensure_bookable,
@@ -78,6 +80,10 @@ class CostCenterInfo:
     month_plan_cents: int
     month_movement_cents: int
     reserve_cents: int
+    income_mode: IncomeMode | None = None
+    income_planned_cents: int = 0
+    income_realized_cents: int = 0
+    income_free_cents: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,6 +354,11 @@ class BookingService:
                 + sum(p.reserve_plan_cents for m, p in monthly.items() if m <= month)
                 - sum(a.reserve_actual_cents for a in actuals if a.month <= month)
             )
+            income = (
+                income_position(uow, cost_center, year)
+                if cost_center.kind is CostCenterKind.INCOME
+                else None
+            )
             return CostCenterInfo(
                 cost_center_id=cost_center_id,
                 year=year,
@@ -358,6 +369,10 @@ class BookingService:
                 month_plan_cents=monthly[month].plan_cents if month in monthly else 0,
                 month_movement_cents=sum(a.movement_cents for a in actuals if a.month == month),
                 reserve_cents=reserve_balance,
+                income_mode=cost_center.income_mode,
+                income_planned_cents=income.planned_cents if income else 0,
+                income_realized_cents=income.realized_cents if income else 0,
+                income_free_cents=income.free_cents if income else 0,
             )
 
     def reserve_notice(self, cost_center_id: str, plan_date: date) -> str | None:
@@ -508,6 +523,7 @@ class BookingService:
             validate_budget_transfer_allowed(
                 planning_enabled=control.planning_enabled,
                 kinds=(cost_centers[0].kind, cost_centers[1].kind),
+                donor_is_leading=first_leg.side is Side.DEBIT,
             )
         if booking_type is BookingType.COST_CENTER_TO_ACCOUNT:
             _check_plan_year(
@@ -545,7 +561,10 @@ class BookingService:
             plan = uow.plans.get_plan(budget.cost_center_id, budget.year) or CostCenterPlan(
                 new_id(), budget.cost_center_id, budget.year
             )
-            if control.planning_enabled:
+            cost_center = _get_cost_center(uow, budget.cost_center_id)
+            if cost_center.kind is CostCenterKind.INCOME:
+                check_pass_on(income_position(uow, cost_center, budget.year), budget.delta_cents)
+            elif control.planning_enabled:
                 check_budget_change(
                     _position(uow, budget.cost_center_id, budget.year), budget.delta_cents
                 )
@@ -571,6 +590,11 @@ class BookingService:
                     credit_cents=actual.credit_cents + delta.credit_delta_cents,
                 )
             )
+            if cost_center.kind is CostCenterKind.INCOME and delta.movement_delta_cents > 0:
+                check_coverage(
+                    income_position(uow, cost_center, delta.year),
+                    reason="Die Einnahme kann nicht in dieser Höhe verringert werden.",
+                )
 
         first_year: dict[str, int] = {}
         for delta in effects.actuals:

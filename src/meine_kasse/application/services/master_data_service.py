@@ -1,7 +1,8 @@
 """Pflege von Kostenstellen und Konten.
 
 Stammdaten werden nie gelöscht, sondern deaktiviert. Änderungen werden protokolliert.
-Die Kostenstellenart ist nach dem Anlegen fest, weil sie Planung und Ansatzsperre bestimmt.
+Die Kostenstellenart und bei Einnahmen der Modus sind nach dem Anlegen fest, weil sie Planung
+und Ansatzsperre bestimmen.
 """
 
 from collections.abc import Sequence
@@ -11,7 +12,7 @@ from datetime import date
 from meine_kasse.application.audit import describe_changes
 from meine_kasse.application.ports import UnitOfWorkFactory
 from meine_kasse.domain.entities import Account, AuditEntry, CostCenter
-from meine_kasse.domain.enums import AccountType, CostCenterKind
+from meine_kasse.domain.enums import AccountType, CostCenterKind, IncomeMode
 from meine_kasse.domain.errors import DuplicateError, NotFoundError, ValidationError
 from meine_kasse.domain.identifiers import new_id
 from meine_kasse.domain.repositories import UnitOfWork
@@ -35,11 +36,16 @@ class MasterDataService:
         name: str,
         valid_from: date,
         kind: CostCenterKind = CostCenterKind.STANDARD,
+        income_mode: IncomeMode | None = None,
         notes: str = "",
         actor_id: str | None = None,
     ) -> str:
         number = _required(number, "Die Kostenstellennummer")
         name = _required(name, "Der Kostenstellenname")
+        if kind is CostCenterKind.INCOME:
+            income_mode = income_mode or IncomeMode.PLAN
+        elif income_mode is not None:
+            raise ValidationError("Einen Einnahmemodus gibt es nur bei Einnahmen-Kostenstellen.")
         cost_center = CostCenter(
             id=new_id(),
             name=name,
@@ -47,6 +53,7 @@ class MasterDataService:
             valid_from=valid_from,
             kind=kind,
             notes=notes.strip(),
+            income_mode=income_mode,
         )
         with self._uow_factory() as uow:
             if uow.cost_centers.get_by_number(number) is not None:

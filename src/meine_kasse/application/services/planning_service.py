@@ -15,6 +15,13 @@ from dataclasses import dataclass, replace
 
 from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.services.booking_control_service import load_or_create_control
+from meine_kasse.application.services.income_planning import (
+    IncomeMonthInput,
+    IncomeView,
+    build_income_view,
+    get_income_cost_center,
+    save_income_plan,
+)
 from meine_kasse.application.services.reserve_projection import apply_projection
 from meine_kasse.domain.entities import AuditEntry, CostCenter, CostCenterPlan, MonthlyPlan
 from meine_kasse.domain.enums import CostCenterKind, PlanMode
@@ -158,6 +165,34 @@ class PlanningService:
                 for cost_center in uow.cost_centers.list_all()
                 if cost_center.is_active and cost_center.kind is CostCenterKind.STANDARD
             ]
+
+    def list_income_cost_centers(self) -> Sequence[CostCenter]:
+        """Aktive Einnahmen-Kostenstellen (Art `INCOME`)."""
+        with self._uow_factory() as uow:
+            return [
+                cost_center
+                for cost_center in uow.cost_centers.list_all()
+                if cost_center.is_active and cost_center.kind is CostCenterKind.INCOME
+            ]
+
+    def get_income_view(self, cost_center_id: str, year: int) -> IncomeView:
+        with self._uow_factory() as uow:
+            cost_center = get_income_cost_center(uow, cost_center_id)
+            return build_income_view(uow, cost_center, year)
+
+    def save_income_plan(
+        self,
+        cost_center_id: str,
+        year: int,
+        *,
+        months: Sequence[IncomeMonthInput],
+        actor_id: str,
+    ) -> None:
+        """Speichert die erwartete Einnahme je Monat einer Einnahmen-Kostenstelle."""
+        with self._uow_factory() as uow:
+            cost_center = get_income_cost_center(uow, cost_center_id)
+            if save_income_plan(uow, cost_center, year, months, actor_id):
+                uow.commit()
 
     def get_plan_view(self, cost_center_id: str, year: int) -> PlanView:
         with self._uow_factory() as uow:
@@ -377,6 +412,8 @@ def _get_planned_cost_center(uow: UnitOfWork, cost_center_id: str) -> CostCenter
     cost_center = uow.cost_centers.get(cost_center_id)
     if cost_center is None:
         raise NotFoundError("Die Kostenstelle wurde nicht gefunden.")
+    if cost_center.kind is CostCenterKind.INCOME:
+        raise ValidationError("Einnahmen-Kostenstellen werden in der Einnahmenplanung geplant.")
     if cost_center.kind is not CostCenterKind.STANDARD:
         raise ValidationError("Für Kostenstellen ohne Plan gibt es keine Planung.")
     return cost_center

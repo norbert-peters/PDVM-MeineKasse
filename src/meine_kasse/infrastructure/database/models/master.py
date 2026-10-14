@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from meine_kasse.domain.enums import AccountType, ClosureKind, CostCenterKind
+from meine_kasse.domain.enums import AccountType, ClosureKind, CostCenterKind, IncomeMode
 from meine_kasse.infrastructure.database.base import Base, UtcDateTime
 from meine_kasse.infrastructure.database.models.mixins import (
     IdNameMixin,
@@ -44,11 +44,19 @@ class CostCenterModel(IdNameMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("number"),
         CheckConstraint(in_values("kind", CostCenterKind), name="kind_valid"),
+        CheckConstraint(
+            "income_mode IS NULL OR " + in_values("income_mode", IncomeMode),
+            name="income_mode_valid",
+        ),
+        CheckConstraint(
+            "(kind = 'INCOME') = (income_mode IS NOT NULL)", name="income_mode_matches_kind"
+        ),
     )
 
     number: Mapped[str] = mapped_column(String(20))
     valid_from: Mapped[date] = mapped_column(Date)
     kind: Mapped[str] = mapped_column(String(20), default=CostCenterKind.STANDARD.value)
+    income_mode: Mapped[str | None] = mapped_column(String(10), default=None)
     notes: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
