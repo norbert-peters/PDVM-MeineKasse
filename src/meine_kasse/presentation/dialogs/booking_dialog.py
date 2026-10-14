@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QDateEdit,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QWidget,
 )
@@ -17,7 +18,7 @@ from meine_kasse.application.services.booking_service import (
 )
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.domain.enums import BookingType, ObjectKind, Side
-from meine_kasse.domain.errors import DomainError, ValidationError
+from meine_kasse.domain.errors import DomainError, PlanPeriodError, ValidationError
 from meine_kasse.domain.services.booking_rules import Stelle
 from meine_kasse.domain.value_objects.money import format_euro, parse_euro
 from meine_kasse.presentation.dialogs.master_edit_dialog import MasterEditDialog
@@ -141,6 +142,7 @@ class BookingDialog(MasterEditDialog):
 
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         self.booking_date_edit.dateChanged.connect(lambda _date: self._refresh_info())
+        self.origin_date_edit.dateChanged.connect(lambda _date: self._refresh_info())
         self.leading_combo.currentIndexChanged.connect(lambda _index: self._refresh_info())
         self.second_combo.currentIndexChanged.connect(lambda _index: self._refresh_info())
         self.soll_edit.textChanged.connect(self._sync_amount_lock)
@@ -209,11 +211,12 @@ class BookingDialog(MasterEditDialog):
         self.period_label.setStyleSheet(_GOOD if status.state is PeriodState.OPEN else _BAD)
 
         leading_kind, second_kind = _KINDS[self.booking_type()]
-        self._show_info(self.leading_info, leading_kind, self.leading_combo, booking_date)
-        self._show_info(self.second_info, second_kind, self.second_combo, booking_date)
+        origin_date = _pydate(self.origin_date_edit.date())
+        self._show_info(self.leading_info, leading_kind, self.leading_combo, origin_date)
+        self._show_info(self.second_info, second_kind, self.second_combo, origin_date)
 
     def _show_info(
-        self, label: QLabel, kind: ObjectKind, combo: QComboBox, booking_date: date
+        self, label: QLabel, kind: ObjectKind, combo: QComboBox, plan_date: date
     ) -> None:
         entity_id = combo.currentData()
         if entity_id is None:
@@ -222,7 +225,7 @@ class BookingDialog(MasterEditDialog):
         try:
             if kind is ObjectKind.COST_CENTER:
                 label.setText(
-                    _describe_cost_center(self._bookings.cost_center_info(entity_id, booking_date))
+                    _describe_cost_center(self._bookings.cost_center_info(entity_id, plan_date))
                 )
             else:
                 balance = self._bookings.account_balance(entity_id)
@@ -238,6 +241,13 @@ class BookingDialog(MasterEditDialog):
     # Speichern
 
     def save(self) -> None:
+        try:
+            self._save_booking()
+        except PlanPeriodError as error:
+            QMessageBox.warning(self, "Buchung nicht möglich", str(error))
+            raise
+
+    def _save_booking(self) -> None:
         soll, haben = _amount(self.soll_edit.text()), _amount(self.haben_edit.text())
         if soll != 0 and haben != 0:
             raise ValidationError(

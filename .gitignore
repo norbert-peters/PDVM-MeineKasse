@@ -8,6 +8,8 @@ __pycache__/
 build/
 dist/
 
+# Wird von packaging\build.ps1 beim Build erzeugt (Zeitpunkt des Builds)
+src/meine_kasse/_build_info.py
 # Produktivdaten und Sicherungen gehören nicht in die Versionsverwaltung
 *.sqlite
 *.sqlite3

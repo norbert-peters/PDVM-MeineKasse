@@ -5,7 +5,7 @@ bzw. Ansatz und Audit-Eintrag werden gemeinsam gespeichert oder gemeinsam verwor
 """
 
 import json
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from enum import StrEnum
@@ -22,7 +22,7 @@ from meine_kasse.domain.entities import (
     MonthlyActual,
 )
 from meine_kasse.domain.enums import BookingType, ObjectKind, Side
-from meine_kasse.domain.errors import NotFoundError, PeriodError, ValidationError
+from meine_kasse.domain.errors import NotFoundError, PeriodError, PlanPeriodError, ValidationError
 from meine_kasse.domain.identifiers import new_id
 from meine_kasse.domain.repositories import UnitOfWork
 from meine_kasse.domain.services.booking_rules import (
@@ -39,7 +39,11 @@ from meine_kasse.domain.services.budget_rules import (
     is_checked,
     validate_budget_transfer_allowed,
 )
-from meine_kasse.domain.services.period_rules import bookable_window, ensure_bookable
+from meine_kasse.domain.services.period_rules import (
+    bookable_window,
+    ensure_bookable,
+    ensure_plan_year_usable,
+)
 from meine_kasse.domain.value_objects.money import format_euro
 
 _MAX_NAME_LENGTH = 200
@@ -91,14 +95,17 @@ class BookingView:
     is_closed: bool
     is_reversal: bool
     is_reversed: bool
+    is_plan_year_closed: bool = False
 
     @property
     def can_edit(self) -> bool:
-        return not (self.is_closed or self.is_reversal or self.is_reversed)
+        return not (
+            self.is_closed or self.is_plan_year_closed or self.is_reversal or self.is_reversed
+        )
 
     @property
     def can_delete(self) -> bool:
-        return not (self.is_closed or self.is_reversed)
+        return not (self.is_closed or self.is_plan_year_closed or self.is_reversed)
 
     @property
     def can_reverse(self) -> bool:
@@ -223,6 +230,11 @@ class BookingService:
             if uow.bookings.has_reversal(booking_id):
                 raise ValidationError("Die Buchung wurde bereits storniert.")
             text = f"Storno: {original.booking_text}".strip()
+            # Der Storno gleicht im selben Planmonat aus. Ist dessen Planjahr abgeschlossen,
+            # wirkt er im Jahr seines eigenen Datums.
+            origin_date = original.origin_date
+            if _plan_year_closed(original, uow.closures.closed_years()):
+                origin_date = booking_date
             reversal = self._build(
                 uow,
                 control,
@@ -231,7 +243,7 @@ class BookingService:
                 entry_side=original.entry_side,
                 amount_cents=-original.amount_cents,
                 booking_date=booking_date,
-                origin_date=original.origin_date,
+                origin_date=origin_date,
                 leading=_stelle_of(original.legs[0]),
                 second=_stelle_of(original.legs[1]),
                 merchant=original.merchant,
@@ -310,11 +322,16 @@ class BookingService:
         with self._uow_factory() as uow:
             return _get_booking(uow, booking_id)
 
-    def cost_center_info(self, cost_center_id: str, booking_date: date) -> CostCenterInfo:
+    def cost_center_info(self, cost_center_id: str, plan_date: date) -> CostCenterInfo:
+        """Stand der Kostenstelle in der Planperiode des Entstehungsdatums.
+
+        Ist das Planjahr nicht bebuchbar, wird der Grund als `PlanPeriodError` gemeldet.
+        """
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
             cost_center = _get_cost_center(uow, cost_center_id)
-            year, month = booking_date.year, booking_date.month
+            year, month = plan_date.year, plan_date.month
+            _check_plan_year(uow, control, cost_center, year)
             position = _position(uow, cost_center_id, year)
             actuals = uow.plans.actuals_for_year(cost_center_id, year)
             monthly = {plan.month: plan for plan in uow.plans.monthly_plans(cost_center_id, year)}
@@ -393,6 +410,11 @@ class BookingService:
                         or (booking.fiscal_year, booking.fiscal_month) in closed_months,
                         is_reversal=booking.reversal_of_id is not None,
                         is_reversed=uow.bookings.has_reversal(booking.id),
+                        is_plan_year_closed=_plan_year_closed(booking, closed_years)
+                        and not (
+                            booking.fiscal_year in closed_years
+                            or (booking.fiscal_year, booking.fiscal_month) in closed_months
+                        ),
                     )
                 )
             return views
@@ -451,6 +473,14 @@ class BookingService:
             validate_budget_transfer_allowed(
                 planning_enabled=control.planning_enabled,
                 kinds=(cost_centers[0].kind, cost_centers[1].kind),
+            )
+        if booking_type is BookingType.COST_CENTER_TO_ACCOUNT:
+            _check_plan_year(
+                uow,
+                control,
+                cost_centers[0],
+                origin_date.year,
+                check_plan=reversal_of_id is None,
             )
 
         name = (booking_text.strip() or merchant.strip())[:_MAX_NAME_LENGTH]
@@ -535,10 +565,29 @@ def _get_cost_center(uow: UnitOfWork, cost_center_id: str) -> CostCenter:
     return cost_center
 
 
+def _check_plan_year(
+    uow: UnitOfWork,
+    control: BookingControl,
+    cost_center: CostCenter,
+    plan_year: int,
+    *,
+    check_plan: bool = True,
+) -> None:
+    ensure_plan_year_usable(
+        cost_center_label=f"{cost_center.number} {cost_center.name}",
+        plan_year=plan_year,
+        current_year=control.current_year,
+        closed_years=uow.closures.closed_years(),
+        planning_checked=check_plan and is_checked(control.planning_enabled, cost_center.kind),
+        plan_exists=uow.plans.get_plan(cost_center.id, plan_year) is not None,
+    )
+
+
 def _ensure_open(uow: UnitOfWork, booking: Booking) -> None:
     """Eine Buchung ist erst mit dem Abschluss ihres Monats unveränderbar."""
+    closed_years = uow.closures.closed_years()
     if (
-        booking.fiscal_year in uow.closures.closed_years()
+        booking.fiscal_year in closed_years
         or (
             booking.fiscal_year,
             booking.fiscal_month,
@@ -549,6 +598,18 @@ def _ensure_open(uow: UnitOfWork, booking: Booking) -> None:
             f"Der Monat {booking.fiscal_month:02d}/{booking.fiscal_year} ist abgeschlossen. "
             "Korrekturen sind nur durch eine Gegenbuchung (Storno) möglich."
         )
+    if _plan_year_closed(booking, closed_years):
+        raise PlanPeriodError(
+            f"Die Buchung wirkt auf das abgeschlossene Planjahr {booking.origin_date.year}. "
+            "Korrekturen sind nur durch eine Gegenbuchung (Storno) möglich."
+        )
+
+
+def _plan_year_closed(booking: Booking, closed_years: Collection[int]) -> bool:
+    return (
+        booking.booking_type is BookingType.COST_CENTER_TO_ACCOUNT
+        and booking.origin_date.year in closed_years
+    )
 
 
 def _to_leg(position: int, side: Side, stelle: Stelle) -> BookingLeg:

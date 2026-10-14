@@ -280,6 +280,50 @@ def test_dialog_shows_budget_block_message_and_saves_nothing(
     assert bookings.list_bookings(year=2026) == []
 
 
+def test_dialog_warns_when_the_plan_year_of_the_origin_date_is_not_usable(
+    qapp: QApplication,
+    bookings: BookingService,
+    booking_control: BookingControlService,
+    master_data: MasterDataService,
+    warnings: list[str],
+    ui_world: UiWorld,
+) -> None:
+    booking_control.update(planning_enabled=True, current_year=2026, current_month=5)
+    dialog = _dialog(bookings, master_data, ui_world)
+    _choose(dialog, ui_world.cc_a, ui_world.giro)
+    dialog.soll_edit.setText("10,00")
+
+    dialog.origin_date_edit.setDate(QDate(2025, 12, 20))
+    assert "kein Plan" in dialog.leading_info.text()
+
+    _save(dialog)
+
+    assert len(warnings) == 1 and "kein Plan" in warnings[0]
+    assert "kein Plan" in dialog.error_label.text()
+    assert bookings.list_bookings(year=2026) == []
+
+
+def test_list_shows_the_origin_date_column(
+    qapp: QApplication,
+    bookings: BookingService,
+    booking_control: BookingControlService,
+    master_data: MasterDataService,
+    ui_world: UiWorld,
+) -> None:
+    dialog = _dialog(bookings, master_data, ui_world)
+    _choose(dialog, ui_world.cc_a, ui_world.giro)
+    dialog.soll_edit.setText("10,00")
+    dialog.origin_date_edit.setDate(QDate(2026, 3, 20))
+    _save(dialog)
+
+    listing = _list(bookings, master_data, booking_control, ui_world)
+
+    row = _cells(listing, 0)
+    assert listing.table.horizontalHeaderItem(8).text() == "Entstehung"  # type: ignore[union-attr]
+    assert row[8] == "20.03.2026"
+    assert row[-1] == "offen"
+
+
 def test_budget_transfer_preset_locks_the_type_and_transfers(
     qapp: QApplication,
     bookings: BookingService,

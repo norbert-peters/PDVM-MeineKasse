@@ -3,7 +3,7 @@
 from collections.abc import Collection
 from datetime import date, timedelta
 
-from meine_kasse.domain.errors import PeriodError
+from meine_kasse.domain.errors import PeriodError, PlanPeriodError
 
 
 def _shift_month(year: int, month: int, offset: int) -> tuple[int, int]:
@@ -37,4 +37,31 @@ def ensure_bookable(
         raise PeriodError(
             "Das Buchungsdatum liegt außerhalb des buchbaren Zeitraums "
             f"({first.strftime('%d.%m.%Y')} bis {last.strftime('%d.%m.%Y')})."
+        )
+
+
+def ensure_plan_year_usable(
+    *,
+    cost_center_label: str,
+    plan_year: int,
+    current_year: int,
+    closed_years: Collection[int],
+    planning_checked: bool,
+    plan_exists: bool,
+) -> None:
+    """Prüft das Planjahr des Entstehungsdatums (Architekturvorgabe 2.11).
+
+    Ein abgeschlossenes Planjahr ist nie bebuchbar. In einem anderen Jahr als dem aktuellen
+    Buchungsjahr wird bei aktiver Planung nur gebucht, wenn die Kostenstelle dort einen Plan hat.
+    Ein abgeschlossener Planmonat im offenen Jahr ist dagegen zulässig.
+    """
+    if plan_year in closed_years:
+        raise PlanPeriodError(
+            f"Das Planjahr {plan_year} der Kostenstelle {cost_center_label} ist abgeschlossen. "
+            "Mit diesem Entstehungsdatum wird nicht gebucht."
+        )
+    if planning_checked and plan_year != current_year and not plan_exists:
+        raise PlanPeriodError(
+            f"Für die Kostenstelle {cost_center_label} ist im Jahr {plan_year} kein Plan "
+            "vorhanden. Mit diesem Entstehungsdatum wird nicht gebucht."
         )

@@ -40,6 +40,7 @@ _COLUMNS = [
     "Haben",
     "Händler",
     "Buchungstext",
+    "Entstehung",
     "Status",
 ]
 _ALL_MONTHS = 0
@@ -47,6 +48,8 @@ _ALL_MONTHS = 0
 
 def _status_text(view: BookingView) -> str:
     parts = ["abgeschlossen" if view.is_closed else "offen"]
+    if view.is_plan_year_closed:
+        parts.append("Planjahr abgeschlossen")
     if view.is_reversal:
         parts.append("Storno")
     if view.is_reversed:
@@ -173,6 +176,7 @@ class BookingListDialog(QDialog):
                 credit,
                 (view.merchant, AUTO),
                 (view.booking_text, AUTO),
+                (format_date(view.origin_date), view.origin_date.toordinal()),
                 (_status_text(view), AUTO),
             ]
             for column, (text, sort_value) in enumerate(cells):

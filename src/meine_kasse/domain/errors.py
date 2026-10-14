@@ -25,6 +25,10 @@ class PeriodError(DomainError):
     """Der Buchungszeitraum ist nicht zulässig oder bereits abgeschlossen."""
 
 
+class PlanPeriodError(PeriodError):
+    """Das Planjahr des Entstehungsdatums ist nicht vorhanden oder abgeschlossen."""
+
+
 class BudgetExceededError(DomainError):
     """Der Ansatz würde überschritten bzw. unterschritten."""
 

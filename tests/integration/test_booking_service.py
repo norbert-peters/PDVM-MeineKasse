@@ -428,6 +428,7 @@ def test_update_moves_the_effect_to_new_values(
         leading=cc(world.cc_b),
         second=acc(world.savings),
         booking_date=date(2026, 6, 2),
+        origin_date=date(2026, 6, 2),
     )
 
     assert actuals(database) == {(world.cc_b, 6): (0, 7000)}

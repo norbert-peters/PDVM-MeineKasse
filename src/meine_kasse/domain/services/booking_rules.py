@@ -156,8 +156,9 @@ class BookingEffects:
 def effects_of(booking: Booking) -> BookingEffects:
     """Wirkung einer Buchung auf Plan-Ist-Werte und Ansatz.
 
-    Konten haben keine gespeicherte Wirkung, ihr Saldo wird aus den Buchungen berechnet.
-    Ansatzumbuchungen berühren nur den Ansatz, nie die Ist-Werte.
+    Die Ist-Werte werden in der Planperiode des Entstehungsdatums fortgeschrieben (Architektur-
+    vorgabe 2.11), der Ansatz im Buchungsjahr. Konten haben keine gespeicherte Wirkung, ihr
+    Saldo wird aus den Buchungen berechnet. Ansatzumbuchungen berühren nie die Ist-Werte.
     """
     actuals: list[ActualDelta] = []
     budgets: list[BudgetDelta] = []
@@ -177,8 +178,8 @@ def effects_of(booking: Booking) -> BookingEffects:
             actuals.append(
                 ActualDelta(
                     leg.cost_center_id,
-                    booking.fiscal_year,
-                    booking.fiscal_month,
+                    booking.origin_date.year,
+                    booking.origin_date.month,
                     booking.amount_cents if is_debit else 0,
                     0 if is_debit else booking.amount_cents,
                 )

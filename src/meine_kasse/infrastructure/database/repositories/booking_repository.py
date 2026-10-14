@@ -1,7 +1,7 @@
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, extract, func, select
 from sqlalchemy.orm import Session
 
 from meine_kasse.domain.entities import Booking, BookingLeg
@@ -172,11 +172,14 @@ class SqlBookingRepository:
         }
 
     def cost_center_actual_totals(self) -> Mapping[tuple[str, int, int], tuple[int, int]]:
+        """Soll- und Haben-Summen je Kostenstelle und Planmonat (Entstehungsdatum)."""
+        origin_year = extract("year", BookingModel.origin_date)
+        origin_month = extract("month", BookingModel.origin_date)
         statement = (
             select(
                 BookingLegModel.cost_center_id,
-                BookingModel.fiscal_year,
-                BookingModel.fiscal_month,
+                origin_year,
+                origin_month,
                 BookingLegModel.side,
                 func.sum(BookingModel.amount_cents),
             )
@@ -187,8 +190,8 @@ class SqlBookingRepository:
             )
             .group_by(
                 BookingLegModel.cost_center_id,
-                BookingModel.fiscal_year,
-                BookingModel.fiscal_month,
+                origin_year,
+                origin_month,
                 BookingLegModel.side,
             )
         )
@@ -197,7 +200,7 @@ class SqlBookingRepository:
             if cost_center_id is None:
                 continue
             index = 0 if side == Side.DEBIT.value else 1
-            totals[(cost_center_id, year, month)][index] += int(amount)
+            totals[(cost_center_id, int(year), int(month))][index] += int(amount)
         return {key: (value[0], value[1]) for key, value in totals.items()}
 
     def budget_transfer_totals(self) -> Mapping[tuple[str, int], int]:

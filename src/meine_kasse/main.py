@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from meine_kasse import __version__
 from meine_kasse.bootstrap import Container, build_container
+from meine_kasse.build_info import build_label
 from meine_kasse.config import database_path, log_dir
 from meine_kasse.logging_setup import configure_logging, install_excepthook
 from meine_kasse.presentation.dialogs.change_password_dialog import ChangePasswordDialog
@@ -61,7 +62,9 @@ def _report_crash(text: str) -> None:
 
 def main() -> int:
     log_path = configure_logging(log_dir())
-    logger.info("Start Meine Kasse %s, Datenbank %s", __version__, database_path())
+    logger.info(
+        "Start Meine Kasse %s (%s), Datenbank %s", __version__, build_label(), database_path()
+    )
     if SELFTEST_FLAG in sys.argv[1:]:
         return run_selftest()
     app = QApplication(sys.argv)

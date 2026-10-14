@@ -16,6 +16,7 @@ from meine_kasse.application.services.opening_balance_service import OpeningBala
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
 from meine_kasse.application.services.user_settings_service import UserSettingsService
+from meine_kasse.build_info import build_label
 from meine_kasse.config import database_path, log_dir
 from meine_kasse.domain.enums import BookingType
 from meine_kasse.domain.errors import DomainError
@@ -199,6 +200,7 @@ class MainWindow(QMainWindow):
             self,
             "Über Meine Kasse",
             f"Meine Kasse {__version__}\n"
+            f"{build_label()}\n"
             "Einfache Haushaltsbuchhaltung auf Kostenstellen und Konten.\n\n"
             f"Datenbank: {database_path()}\n"
             f"Protokolle: {log_dir()}",

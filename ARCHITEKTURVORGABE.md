@@ -194,6 +194,10 @@ Regeln:
 4. Ein Storno übernimmt das Entstehungsdatum der Ursprungsbuchung, damit er im selben Planmonat ausgleicht. Ist dieses Planjahr abgeschlossen, wird das Datum des Storno als Entstehungsdatum verwendet.
 5. Bei einer Änderung des Entstehungsdatums werden alter und neuer Planmonat in einer Transaktion fortgeschrieben.
 6. Der Neuaufbau der Plan-Ist-Werte (`rebuild_projections`) und die Abschlussprüfung verwenden die Planperiode.
+7. „Anderes Planjahr“ bedeutet: ungleich dem aktuellen Buchungsjahr der Buchungssteuerung. Die Planprüfung gilt nur für Ist-Buchungen (Kostenstelle → Konto) auf Kostenstellen der Art `STANDARD` bei aktiver Planung. Ein abgeschlossenes Planjahr wird dagegen immer abgelehnt. Als Plan gilt ein vorhandener Jahresplan der Kostenstelle (auch ein durch Ansatzumbuchung entstandener).
+8. Eine Buchung, deren Planjahr nachträglich abgeschlossen wurde, kann nicht mehr geändert oder gelöscht, sondern nur noch storniert werden. Der Storno wirkt dann im Jahr seines eigenen Datums.
+9. Ansatzumbuchungen gehören zum Buchungsjahr; das Entstehungsdatum spielt für sie keine Rolle.
+10. In der Buchungsmaske zeigen die Kostenstellenangaben den Stand der Planperiode des Entstehungsdatums; ist sie nicht bebuchbar, erscheint der Grund dort und als Hinweisdialog beim Speichern.
 
 ### 2.12 Rückstellungen
 
