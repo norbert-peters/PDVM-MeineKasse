@@ -145,7 +145,7 @@ Die Summe aller Ansätze bleibt dadurch unverändert. Ein negativer Betrag kehrt
 | --- | --- | --- |
 | Erstmalige Festlegung des Jahresansatzes | Planung, solange die Planung nicht aktiviert ist | Danach ist der Haushaltsansatz fix |
 | Höhe des Jahresansatzes einer Kostenstelle | nur über Ansatzumbuchung | Gesamthaushalt bleibt konstant, Änderung ist belegt, datiert und signiert |
-| Verteilung auf Monate, Quartale, unregelmäßige Beträge und Rückstellungen innerhalb des Jahresansatzes | Planung (Planungsdialog), ohne Buchung | Gesamtsumme ändert sich nicht, Vorgang ist reine Planungsarbeit |
+| Verteilung auf Monate und unregelmäßige Beträge innerhalb des Jahresansatzes, Zuführungen zur Rückstellung | Planung (Planungsdialog), ohne Buchung | Gesamtsumme ändert sich nicht, Vorgang ist reine Planungsarbeit |
 
 Regeln dazu:
 
@@ -153,7 +153,7 @@ Regeln dazu:
 - Die empfangende Kostenstelle verteilt den erhaltenen Ansatz anschließend selbst in der Planung. Die abgebende Kostenstelle kann nur unverteilten Ansatz abgeben oder muss ihre Monatsplanung zuvor verringern.
 - Planänderungen sind nur in offenen Monaten möglich und werden im Audit-Protokoll festgehalten.
 - Die Signatur eines Monatsabschlusses umfasst auch die Ansatzumbuchungen und Monatsplanwerte des Monats.
-- Die Planungsart (`plan_mode`) entfällt als Bedienelement. Es gibt keine Quartalsverteilung mehr. „Gleichmäßig verteilen“ bleibt als Eingabehilfe, der Standardknopf des Planungsdialogs ist „Speichern“. Die Spalte `plan_mode` bleibt im Schema und in der Signatur unverändert erhalten (Rückwärtskompatibilität bestehender Abschlüsse), neue Werte sind immer `MONTHLY`.
+- Die Planungsart (`plan_mode`) entfällt als Bedienelement. Es gibt keine Quartalsverteilung mehr. „Gleichmäßig verteilen“ bleibt als Eingabehilfe, der Standardknopf des Planungsdialogs ist „Speichern“. Die Spalte `plan_mode` bleibt im Schema und in der Signatur unverändert erhalten (Rückwärtskompatibilität bestehender Abschlüsse); vorhandene Werte werden beim Speichern unverändert durchgereicht, neue Monate sind `MONTHLY`.
 - Hat eine Kostenstelle keinen Ansatz, kann darauf nur gebucht werden, nachdem ihr per Ansatzumbuchung Ansatz bereitgestellt wurde (ergibt sich aus der Ansatzsperre, 2.7).
 
 Gegenüber „alles über Buchungen“ erzeugt dieser Weg keine Buchungen ohne fachlichen Wert für reine Umverteilungen. Gegenüber „alles in der Planung“ bleibt jede Änderung der Ansatzhöhe nachvollziehbar.
@@ -215,14 +215,16 @@ Begriffe (aus Sicht der Rückstellung; Soll = Bildung, Haben = Entlastung, Besta
 Regeln:
 
 1. **Direkte Planung:** Ein Ansatz wird im Monat der voraussichtlichen Zahlung geplant. Ist in allen zwölf Monaten ein Planwert vorhanden, entstehen keine Rückstellungen.
-2. **Maschinelle Verteilung:** Ist nicht jeder Monat belegt, wird der Jahresansatz gleichmäßig auf die Monate als Zuführung verteilt (Rundungsrest an die ersten Monate). Danach wird je Zahlungsmonat geprüft, ob Vortrag plus Zuführungen bis einschließlich dieses Monats die Planentlastung decken. Fehlt Deckung, werden die Zuführungen der **offenen** Monate bis zum Zahlungsmonat **erhöht, nie erniedrigt**; ein positiver Bestand wird fortgeführt. Die Summe der Zuführungen übersteigt dadurch den Jahresansatz nicht. Reicht auch das nicht, erscheint ein Hinweis im Planungsdialog.
-3. **Manuelle Anpassung:** Verteilte Zuführungen sind je Monat änderbar. Manuell geänderte Monate sind gekennzeichnet (`reserve_is_manual`) und werden von einer Neuberechnung nicht überschrieben. Abgeschlossene Monate werden nie verändert.
+2. **Maschinelle Verteilung:** Ist nicht jeder Monat belegt, wird der **gesamte** Jahresansatz gleichmäßig auf die freien Monate als Zuführung verteilt (Rundungsrest an die ersten Monate). Danach wird je Zahlungsmonat geprüft, ob Vortrag plus Zuführungen bis einschließlich dieses Monats die geplanten Zahlungen (kumuliert) decken. Fehlt Deckung, werden die Zuführungen **vor der Zahlung erhöht**, und zwar in den freien Monaten seit der letzten Deckungslücke; die Monate nach der Zahlung erhalten entsprechend weniger. Die Summe der Zuführungen bleibt dadurch gleich und übersteigt den Jahresansatz nie, kein Monat wird negativ. Reicht der Ansatz oder die Zahl freier Monate nicht aus, erscheint ein Hinweis im Planungsdialog (Monat und Fehlbetrag).
+3. **Manuelle Anpassung:** Die Zuführung ist je Monat änderbar. Ein von Hand gesetzter Monat ist gekennzeichnet (`reserve_is_manual`) und wird von der maschinellen Verteilung nicht überschrieben; ein leeres Feld macht ihn wieder maschinell. Die Schaltfläche „Rückstellung maschinell“ verwirft die manuellen Werte der offenen Monate. Abgeschlossene Monate werden nie verändert. Die Summe der Zuführungen darf den Jahresansatz nicht übersteigen (sonst wird nicht gespeichert).
 4. **Keine negativen Rückstellungen:** Der Bestand ist nie kleiner als 0. Es wird nicht gegen künftige Zuführungen entlastet.
-5. **Entlastung bei Buchung:** Eine Ist-Bewegung der Kostenstelle entlastet die Rückstellung nur bis zum Buchungszeitpunkt verfügbaren Bestand (Vortrag + Zuführungen bis einschließlich Planmonat − bisherige Entlastungen). Ist der Bestand zu gering, erscheint ein Hinweis; die Buchung wird dennoch ausgeführt.
+5. **Entlastung bei Buchung:** Eine Ist-Bewegung der Kostenstelle entlastet die Rückstellung nur bis zum verfügbaren Bestand (Vortrag + Zuführungen bis einschließlich Planmonat − bisherige Entlastungen). Ist der Bestand zu gering, erscheint nach dem Speichern ein Hinweis mit dem Fehlbetrag; die Buchung wird dennoch ausgeführt. Ohne Rückstellung im Planjahr (z. B. bei Planung in allen Monaten) gibt es keinen Hinweis. Die Buchungsmaske zeigt den Rückstellungsbestand bis zum Planmonat.
 6. **Berechnung nach Monatssummen:** Die Entlastung wird je Planmonat aus der Monatssumme der Ist-Bewegung berechnet, nicht aus der Reihenfolge einzelner Buchungen. Damit ist sie jederzeit aus den Buchungen neu aufbaubar (Entwicklungsregel 3.11). Eine negative Monatsbewegung (Erstattung) gibt Entlastung höchstens bis zur bisherigen Entlastung zurück.
 7. **Ansatzsperre:** Unverändert (2.7). Die Rückstellung unterteilt den Jahresansatz und erweitert ihn nicht. Zuführung und Planentlastung sind Planung und berühren Ist, Haushaltsrest und Konten nicht.
-8. **Jahreswechsel:** Der nicht ausgeglichene Bestand wird als Vortrag übernommen. Bis zum Jahresabschluss wird er aus dem Vorjahr abgeleitet, mit dem Jahresabschluss festgeschrieben (Bestandteil der Jahressignatur). Der Vortrag ist nicht mehr manuell editierbar.
+8. **Jahreswechsel:** Der nicht ausgeglichene Bestand (Endbestand Dezember) ist der Vortrag ins Folgejahr. Hat die Kostenstelle im Vorjahr einen Plan, wird der Vortrag von dort übernommen und ist nicht editierbar. Ohne Vorjahresplan wird er von Hand erfasst, solange der Januar des Jahres nicht abgeschlossen ist. Der Vortrag ist eine Projektion und aus den signierten Buchungen und Plänen jederzeit ableitbar; eine eigene Signatur gibt es nicht. Die Abschlussprüfung vergleicht gespeicherte Entlastung und Vorträge mit der Neuberechnung und bricht bei Abweichung ab (Projektionen neu aufbauen).
 9. **Reale Deckung:** Das Geld für Rückstellungen wird manuell per Konto → Konto-Buchung auf das Betriebsmittelkonto bewegt (2.13). Das System bucht dies nicht automatisch.
+10. **Auslöser der Berechnung:** Zuführungen werden beim Speichern der Planung berechnet (im Dialog als Live-Vorschau). Entlastung und Vorträge werden bei jeder Buchung, Änderung, Löschung und Stornierung in derselben Transaktion fortgeschrieben, über alle folgenden Planjahre hinweg, sowie beim Neuaufbau der Projektionen und beim Programmstart.
+11. **Bestand aus früheren Versionen:** Bisher von Hand erfasste Zuführungen (> 0) gelten nach der Migration als manuell und bleiben unverändert.
 
 ### 2.13 Cash-Management
 
@@ -391,8 +393,8 @@ Regeln:
 
 | Tabelle | Wesentliche Felder |
 | --- | --- |
-| `cost_center_plans` | id, name, cost_center_id, year, base_budget_cents (Basisansatz, ≥ 0, nach Aktivierung fix), budget_transfer_cents (Projektion aus `BUDGET_TRANSFER`), reserve_carry_in_cents, reserve_carry_out_cents (ab Version 3 abgeleitet bzw. mit Jahresabschluss festgeschrieben, nicht mehr manuell, siehe 2.12) |
-| `monthly_plans` | id, name, cost_center_plan_id, month, plan_cents, reserve_plan_cents (Zuführung), reserve_is_manual, plan_mode (nur noch `MONTHLY`, bleibt wegen der Signatur erhalten) |
+| `cost_center_plans` | id, name, cost_center_id, year, base_budget_cents (Basisansatz, ≥ 0, nach Aktivierung fix), budget_transfer_cents (Projektion aus `BUDGET_TRANSFER`), reserve_carry_in_cents (manuell nur ohne Vorjahresplan, sonst aus dem Vorjahr abgeleitet), reserve_carry_out_cents (berechnet, siehe 2.12) |
+| `monthly_plans` | id, name, cost_center_plan_id, month, plan_cents, reserve_plan_cents (Zuführung), reserve_is_manual (manuell gesetzte Zuführung), plan_mode (wird nicht mehr bedient, bleibt wegen der Signatur erhalten) |
 | `monthly_actuals` | id, name, cost_center_id, year, month, debit_cents, credit_cents, reserve_actual_cents (Entlastung ist) |
 
 `debit_cents` und `credit_cents` sind vorzeichenbehaftet und werden getrennt geführt. Die Ist-Bewegung ist `debit_cents − credit_cents`. `year` und `month` von `monthly_actuals` bezeichnen die **Planperiode** (Entstehungsdatum, siehe 2.11). `monthly_actuals` enthält ausschließlich Ist-Buchungen, nie Ansatzumbuchungen. Der wirksame Jahresansatz ist `base_budget_cents + budget_transfer_cents`; beides ist aus den Buchungen rekonstruierbar. Planung wird intern immer als Monatswerte gespeichert.

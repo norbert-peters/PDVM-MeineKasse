@@ -39,15 +39,13 @@ def save(
     *,
     base: int = 10000,
     plans: list[MonthPlanInput] | None = None,
-    carry_in: int = 0,
-    carry_out: int = 0,
+    carry_in: int | None = None,
 ) -> None:
     planning.save_plan(
         cost_center or world.cc_a,
         YEAR,
         base_budget_cents=base,
         reserve_carry_in_cents=carry_in,
-        reserve_carry_out_cents=carry_out,
         months=plans or [],
         actor_id=world.actor,
     )
@@ -104,11 +102,12 @@ def test_save_stores_budget_months_and_carry_over(
         MonthPlanInput(2, 0),
         MonthPlanInput(3, 3000, 0, PlanMode.IRREGULAR),
     ]
-    save(planning, world, base=10000, plans=plans, carry_in=700, carry_out=900)
+    save(planning, world, base=10000, plans=plans, carry_in=700)
 
     view = planning.get_plan_view(world.cc_a, YEAR)
     assert view.base_budget_cents == 10000
-    assert (view.reserve_carry_in_cents, view.reserve_carry_out_cents) == (700, 900)
+    # Der Vortrag ins Folgejahr wird berechnet: Vortrag + alle Zuführungen (nichts ausgegeben)
+    assert (view.reserve_carry_in_cents, view.reserve_carry_out_cents) == (700, 700 + 10000)
     assert view.distributed_cents == 5000
     assert view.undistributed_cents == 5000
     first, second, third = view.months[:3]
@@ -117,6 +116,7 @@ def test_save_stores_budget_months_and_carry_over(
         500,
         PlanMode.QUARTERLY,
     )
+    assert first.reserve_is_manual and third.reserve_is_manual and not second.reserve_is_manual
     assert second.plan_cents == 0 and second.plan_mode is PlanMode.MONTHLY
     assert third.plan_mode is PlanMode.IRREGULAR
     (entry,) = audit_entries(database)

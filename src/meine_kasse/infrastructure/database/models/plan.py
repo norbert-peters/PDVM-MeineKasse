@@ -1,4 +1,4 @@
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from meine_kasse.domain.enums import PlanMode
@@ -42,6 +42,7 @@ class MonthlyPlanModel(IdNameMixin, TimestampMixin, Base):
     month: Mapped[int] = mapped_column(Integer)
     plan_cents: Mapped[int] = mapped_column(Integer, default=0)
     reserve_plan_cents: Mapped[int] = mapped_column(Integer, default=0)
+    reserve_is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     plan_mode: Mapped[str] = mapped_column(String(20), default=PlanMode.MONTHLY.value)
 
 

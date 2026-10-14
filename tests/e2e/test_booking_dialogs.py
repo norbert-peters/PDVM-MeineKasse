@@ -16,6 +16,7 @@ from meine_kasse.application.services.booking_control_service import (  # noqa: 
 )
 from meine_kasse.application.services.booking_service import BookingService  # noqa: E402
 from meine_kasse.application.services.master_data_service import MasterDataService  # noqa: E402
+from meine_kasse.application.services.planning_service import PlanningService  # noqa: E402
 from meine_kasse.domain.enums import AccountType, BookingType, Side  # noqa: E402
 from meine_kasse.infrastructure.database.models import (  # noqa: E402
     CostCenterPlanModel,
@@ -322,6 +323,54 @@ def test_list_shows_the_origin_date_column(
     assert listing.table.horizontalHeaderItem(8).text() == "Entstehung"  # type: ignore[union-attr]
     assert row[8] == "20.03.2026"
     assert row[-1] == "offen"
+
+
+def test_dialog_shows_a_notice_when_the_reserve_is_not_sufficient_but_still_books(
+    qapp: QApplication,
+    bookings: BookingService,
+    master_data: MasterDataService,
+    planning: PlanningService,
+    ui_world: UiWorld,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planning.save_plan(
+        ui_world.cc_a, 2026, base_budget_cents=120000, months=[], actor_id=ui_world.actor
+    )
+    notices: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "information", lambda _parent, _title, text: notices.append(text) or None
+    )
+    dialog = _dialog(bookings, master_data, ui_world)
+    _choose(dialog, ui_world.cc_a, ui_world.giro)
+    dialog.origin_date_edit.setDate(QDate(2026, 1, 20))
+    dialog.soll_edit.setText("250,00")
+    assert "Rückstellungsbestand" in dialog.leading_info.text()
+
+    _save(dialog)
+
+    assert len(notices) == 1
+    assert "01/2026" in notices[0] and "150,00 €" in notices[0]
+    assert len(bookings.list_bookings(year=2026)) == 1
+
+
+def test_dialog_shows_no_notice_without_reserve(
+    qapp: QApplication,
+    bookings: BookingService,
+    master_data: MasterDataService,
+    ui_world: UiWorld,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notices: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "information", lambda _parent, _title, text: notices.append(text) or None
+    )
+    dialog = _dialog(bookings, master_data, ui_world)
+    _choose(dialog, ui_world.cc_a, ui_world.giro)
+    dialog.soll_edit.setText("250,00")
+
+    _save(dialog)
+
+    assert notices == []
 
 
 def test_budget_transfer_preset_locks_the_type_and_transfers(

@@ -229,7 +229,9 @@ def test_verification_detects_changed_plan_values(
     )
     closing.close_month(actor_id=world.actor)
     with database.session_factory() as session:
-        session.scalars(select(MonthlyPlanModel)).one().plan_cents = 2000
+        session.scalars(
+            select(MonthlyPlanModel).where(MonthlyPlanModel.month == 5)
+        ).one().plan_cents = 2000
         session.commit()
     assert [check.ok for check in closing.verify_closures()] == [False]
 

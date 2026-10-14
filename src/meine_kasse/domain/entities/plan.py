@@ -22,12 +22,19 @@ class CostCenterPlan:
 
 @dataclass(frozen=True, slots=True)
 class MonthlyPlan:
+    """Monatsplan. `reserve_plan_cents` ist die Zuführung zur Rückstellung des Monats.
+
+    `reserve_is_manual` kennzeichnet eine von Hand gesetzte Zuführung; sie wird von der
+    maschinellen Verteilung nicht überschrieben.
+    """
+
     id: str
     cost_center_plan_id: str
     month: int
     plan_cents: int
     reserve_plan_cents: int
     plan_mode: PlanMode
+    reserve_is_manual: bool = False
 
 
 @dataclass(frozen=True, slots=True)

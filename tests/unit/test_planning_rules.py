@@ -3,8 +3,8 @@ import pytest
 from meine_kasse.domain.errors import ValidationError
 from meine_kasse.domain.services.planning_rules import (
     check_distribution,
+    check_reserve_distribution,
     distribute_evenly,
-    distribute_quarters,
     validate_month_amounts,
     validate_plan_amounts,
 )
@@ -29,17 +29,6 @@ def test_even_distribution_rejects_negative_total_and_empty_months() -> None:
         distribute_evenly(100, [])
 
 
-def test_quarter_distribution_uses_only_open_months() -> None:
-    result = distribute_quarters({1: 3000, 2: 1000}, open_months={2, 3, 4, 5, 6})
-    assert result == {2: 1500, 3: 1500, 4: 334, 5: 333, 6: 333}
-
-
-def test_quarter_without_open_months_is_only_valid_for_zero() -> None:
-    assert distribute_quarters({1: 0}, open_months={4, 5}) == {}
-    with pytest.raises(ValidationError, match="Quartal 1"):
-        distribute_quarters({1: 100}, open_months={4, 5})
-
-
 def test_distribution_may_use_the_whole_budget_but_not_more() -> None:
     check_distribution(10000, 10000)
     check_distribution(10000, 0)
@@ -49,14 +38,23 @@ def test_distribution_may_use_the_whole_budget_but_not_more() -> None:
         check_distribution(-1, 0)
 
 
+def test_reserve_total_may_not_exceed_the_budget() -> None:
+    check_reserve_distribution(10000, 10000)
+    with pytest.raises(ValidationError, match="Rückstellungen.*1,00 €"):
+        check_reserve_distribution(10000, 10100)
+
+
 def test_amount_validation() -> None:
-    validate_plan_amounts(base_cents=0, carry_in_cents=0, carry_out_cents=0)
+    validate_plan_amounts(base_cents=0, carry_in_cents=0)
     with pytest.raises(ValidationError):
-        validate_plan_amounts(base_cents=-1, carry_in_cents=0, carry_out_cents=0)
+        validate_plan_amounts(base_cents=-1, carry_in_cents=0)
     with pytest.raises(ValidationError):
-        validate_plan_amounts(base_cents=0, carry_in_cents=-1, carry_out_cents=0)
+        validate_plan_amounts(base_cents=0, carry_in_cents=-1)
     validate_month_amounts(1, 0, 0)
+    validate_month_amounts(1, 0, None)
     with pytest.raises(ValidationError):
         validate_month_amounts(13, 0, 0)
     with pytest.raises(ValidationError):
         validate_month_amounts(1, -5, 0)
+    with pytest.raises(ValidationError):
+        validate_month_amounts(1, 0, -5)

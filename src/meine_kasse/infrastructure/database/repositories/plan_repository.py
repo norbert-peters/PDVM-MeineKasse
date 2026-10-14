@@ -32,6 +32,7 @@ def _monthly_to_entity(model: MonthlyPlanModel) -> MonthlyPlan:
         plan_cents=model.plan_cents,
         reserve_plan_cents=model.reserve_plan_cents,
         plan_mode=PlanMode(model.plan_mode),
+        reserve_is_manual=model.reserve_is_manual,
     )
 
 
@@ -75,6 +76,14 @@ class SqlPlanRepository:
             _plan_to_entity(model) for model in self._session.scalars(select(CostCenterPlanModel))
         ]
 
+    def plans_of_cost_center(self, cost_center_id: str) -> Sequence[CostCenterPlan]:
+        statement = (
+            select(CostCenterPlanModel)
+            .where(CostCenterPlanModel.cost_center_id == cost_center_id)
+            .order_by(CostCenterPlanModel.year)
+        )
+        return [_plan_to_entity(model) for model in self._session.scalars(statement)]
+
     def monthly_plans(self, cost_center_id: str, year: int) -> Sequence[MonthlyPlan]:
         statement = (
             select(MonthlyPlanModel)
@@ -110,6 +119,7 @@ class SqlPlanRepository:
         model.month = plan.month
         model.plan_cents = plan.plan_cents
         model.reserve_plan_cents = plan.reserve_plan_cents
+        model.reserve_is_manual = plan.reserve_is_manual
         model.plan_mode = plan.plan_mode.value
         self._session.flush()
 

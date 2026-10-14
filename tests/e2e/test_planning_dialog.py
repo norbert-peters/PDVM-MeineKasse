@@ -18,7 +18,7 @@ from meine_kasse.application.services.planning_service import (  # noqa: E402
     MonthPlanInput,
     PlanningService,
 )
-from meine_kasse.domain.enums import BookingType, ObjectKind, PlanMode, Side  # noqa: E402
+from meine_kasse.domain.enums import BookingType, ObjectKind, Side  # noqa: E402
 from meine_kasse.domain.services.booking_rules import Stelle  # noqa: E402
 from meine_kasse.infrastructure.database.models import (  # noqa: E402
     PeriodClosureModel,
@@ -26,12 +26,9 @@ from meine_kasse.infrastructure.database.models import (  # noqa: E402
 )
 from meine_kasse.infrastructure.database.session import Database  # noqa: E402
 from meine_kasse.presentation.dialogs.planning_dialog import PlanningDialog  # noqa: E402
-from meine_kasse.presentation.dialogs.quarter_amounts_dialog import (  # noqa: E402
-    QuarterAmountsDialog,
-)
 
 YEAR = 2026
-PLAN, RESERVE, ACTUAL_DEBIT, ACTUAL_CREDIT, STATUS = 1, 3, 4, 5, 8
+PLAN, RESERVE, KIND, ACTUAL_DEBIT, ACTUAL_CREDIT, RELEASE, BALANCE, STATUS = 1, 2, 3, 4, 5, 8, 9, 10
 
 
 @pytest.fixture(scope="module")
@@ -105,8 +102,8 @@ def test_saving_stores_the_plan(
     _set(dialog, 0, PLAN, "100,00")
     _set(dialog, 5, PLAN, "250,50")
     _set(dialog, 5, RESERVE, "40,00")
-    dialog.mode_combos[6].setCurrentIndex(dialog.mode_combos[6].findData("IRREGULAR"))
     dialog.carry_in_edit.setText("15,00")
+    dialog.carry_in_edit.textEdited.emit("15,00")
     dialog.save_button.click()
 
     assert "gespeichert" in dialog.message_label.text()
@@ -115,8 +112,12 @@ def test_saving_stores_the_plan(
     assert view.reserve_carry_in_cents == 1500
     assert view.months[0].plan_cents == 10000
     assert (view.months[5].plan_cents, view.months[5].reserve_plan_cents) == (25050, 4000)
-    assert view.months[5].plan_mode is PlanMode.IRREGULAR
+    assert view.months[5].reserve_is_manual
+    assert not view.months[4].reserve_is_manual
+    assert sum(month.reserve_plan_cents for month in view.months) == 120000
     assert _text(dialog, 5, PLAN) == "250,50 €"
+    assert _text(dialog, 5, KIND) == "manuell"
+    assert _text(dialog, 4, KIND) == "maschinell"
 
 
 def test_summary_updates_while_typing_and_warns_about_overdistribution(
@@ -193,7 +194,7 @@ def test_even_distribution_skips_closed_months(
 
     assert _text(dialog, 0, STATUS) == "abgeschlossen (fix)"
     assert not _editable(dialog, 0, PLAN)
-    assert dialog.mode_combos[1].isEnabled() is False
+    assert not _editable(dialog, 0, RESERVE)
     assert _editable(dialog, 1, PLAN)
 
     dialog.distribute_button.click()
@@ -204,35 +205,17 @@ def test_even_distribution_skips_closed_months(
     assert view.distributed_cents == 120000
 
 
-def test_quarter_amounts_are_split_over_the_months_of_the_quarter(
+def test_save_is_the_default_button_and_there_is_no_planning_mode(
     qapp: QApplication,
     planning: PlanningService,
     booking_control: BookingControlService,
     world: World,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_exec(self: QuarterAmountsDialog) -> int:
-        self.amounts = {1: 3000, 2: 0, 3: 600, 4: 0}
-        return 1
-
-    monkeypatch.setattr(QuarterAmountsDialog, "exec", fake_exec)
     dialog = _dialog(planning, booking_control, world)
-    dialog.base_edit.setText("100,00")
-    dialog.base_edit.textEdited.emit("100,00")
-    dialog.quarter_button.click()
 
-    assert [_text(dialog, row, PLAN) for row in (0, 1, 2)] == ["10,00 €"] * 3
-    assert [_text(dialog, row, PLAN) for row in (6, 7, 8)] == ["2,00 €"] * 3
-    assert dialog.mode_combos[1].currentData() == PlanMode.QUARTERLY.value
-    assert dialog.mode_combos[4].currentData() == PlanMode.MONTHLY.value
-
-
-def test_quarter_dialog_parses_amounts(qapp: QApplication) -> None:
-    dialog = QuarterAmountsDialog()
-    dialog.edits[1].setText("300,00")
-    dialog.edits[3].setText("1.000,50")
-    dialog.save()
-    assert dialog.amounts == {1: 30000, 2: 0, 3: 100050, 4: 0}
+    assert dialog.save_button.isDefault()
+    assert not dialog.distribute_button.isDefault()
+    assert not hasattr(dialog, "mode_combos") and not hasattr(dialog, "quarter_button")
 
 
 def test_base_is_locked_when_planning_is_active(
@@ -341,3 +324,187 @@ def test_reset_discards_changes(
     _set(dialog, 0, PLAN, "10,00")
     dialog.reset_button.click()
     assert _text(dialog, 0, PLAN) == "0,00 €"
+
+
+# Rückstellung
+
+
+def _plan_with_base(dialog: PlanningDialog, text: str) -> None:
+    dialog.base_edit.setText(text)
+    dialog.base_edit.textEdited.emit(text)
+
+
+def test_reserve_is_distributed_live_while_typing_plan_amounts(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+
+    assert {_text(dialog, row, RESERVE) for row in range(12)} == {"100,00 €"}
+    assert dialog.reserve_total_label.text() == "1.200,00 €"
+
+    _set(dialog, 2, PLAN, "600,00")
+    _set(dialog, 8, PLAN, "600,00")
+
+    assert [_text(dialog, row, RESERVE) for row in (0, 1, 2)] == ["200,00 €"] * 3
+    assert [_text(dialog, row, RESERVE) for row in range(3, 9)] == ["100,00 €"] * 6
+    assert [_text(dialog, row, RESERVE) for row in (9, 10, 11)] == ["0,00 €"] * 3
+    assert _text(dialog, 8, BALANCE) == "1.200,00 €"
+    assert dialog.message_label.text() == ""
+
+
+def test_planning_every_month_directly_means_no_reserve(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+
+    dialog.distribute_button.click()
+
+    assert {_text(dialog, row, RESERVE) for row in range(12)} == {"0,00 €"}
+    assert dialog.reserve_total_label.text() == "0,00 €"
+
+
+def test_manual_reserve_is_kept_and_an_empty_cell_returns_to_machine(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+
+    _set(dialog, 3, RESERVE, "300,00")
+    assert _text(dialog, 3, KIND) == "manuell"
+    assert _text(dialog, 3, RESERVE) == "300,00"
+    assert all(_text(dialog, row, KIND) == "maschinell" for row in (0, 1, 2, 4))
+    assert _text(dialog, 0, RESERVE) == "81,82 €"
+
+    _set(dialog, 3, RESERVE, "")
+    assert _text(dialog, 3, KIND) == "maschinell"
+    assert {_text(dialog, row, RESERVE) for row in range(12)} == {"100,00 €"}
+
+
+def test_reserve_button_discards_manual_values_of_open_months(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+    _set(dialog, 3, RESERVE, "300,00")
+
+    dialog.reserve_button.click()
+
+    assert _text(dialog, 3, KIND) == "maschinell"
+    assert {_text(dialog, row, RESERVE) for row in range(12)} == {"100,00 €"}
+
+
+def test_manual_reserve_above_the_budget_is_rejected_on_save(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "100,00")
+    _set(dialog, 0, RESERVE, "150,00")
+
+    dialog.save_button.click()
+
+    assert "übersteigen den Jahresansatz" in dialog.message_label.text()
+    assert planning.get_plan_view(world.cc_a, YEAR).base_budget_cents == 0
+
+
+def test_saved_manual_months_stay_manual_after_reopening(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+    _set(dialog, 3, RESERVE, "300,00")
+    dialog.save_button.click()
+
+    reopened = _dialog(planning, booking_control, world)
+
+    assert _text(reopened, 3, KIND) == "manuell"
+    assert _text(reopened, 3, RESERVE) == "300,00 €"
+    assert _text(reopened, 4, KIND) == "maschinell"
+
+
+def test_carry_in_is_manual_without_a_previous_year_and_derived_otherwise(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    planning.save_plan(
+        world.cc_a,
+        YEAR - 1,
+        base_budget_cents=120000,
+        reserve_carry_in_cents=0,
+        months=[],
+        actor_id=world.actor,
+    )
+    dialog = _dialog(planning, booking_control, world)
+
+    assert dialog.carry_in_edit.isEnabled() is False
+    assert "Vorjahr" in dialog.carry_in_hint.text()
+    assert dialog.carry_in_edit.text() == "1.200,00 €"
+    assert dialog.carry_out_label.text() == "1.200,00 €"
+
+    dialog.year_spin.setValue(YEAR - 1)
+    assert dialog.carry_in_edit.isEnabled() is True
+    assert "von Hand" in dialog.carry_in_hint.text()
+
+
+def test_actual_spending_releases_the_reserve_and_shows_in_the_grid(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    bookings: BookingService,
+    world: World,
+) -> None:
+    planning.save_plan(world.cc_a, YEAR, base_budget_cents=120000, months=[], actor_id=world.actor)
+    bookings.post(
+        booking_type=BookingType.COST_CENTER_TO_ACCOUNT,
+        entry_side=Side.DEBIT,
+        amount_cents=25000,
+        booking_date=date(2026, 5, 10),
+        origin_date=date(2026, 2, 10),
+        leading=Stelle(ObjectKind.COST_CENTER, world.cc_a),
+        second=Stelle(ObjectKind.ACCOUNT, world.giro),
+        actor_id=world.actor,
+    )
+
+    dialog = _dialog(planning, booking_control, world)
+
+    assert _text(dialog, 1, RELEASE) == "200,00 €"  # Januar + Februar = 200,00 € verfügbar
+    assert _text(dialog, 1, BALANCE) == "0,00 €"
+    assert _text(dialog, 2, BALANCE) == "100,00 €"
+    assert dialog.carry_out_label.text() == "1.000,00 €"
+    assert "fehlen" not in dialog.message_label.text()
+
+
+def test_shortfall_notice_for_planned_payment_is_shown(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "600,00")
+    _set(dialog, 0, RESERVE, "0,00")  # Januar manuell 0
+    _set(dialog, 0, PLAN, "100,00")
+
+    assert "01/2026" in dialog.message_label.text()
+    assert "fehlen 100,00 €" in dialog.message_label.text()

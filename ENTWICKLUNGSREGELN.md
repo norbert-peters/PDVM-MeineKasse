@@ -48,24 +48,24 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 
 ## 4. Planung und Ansatzsperre
 
-1. Planung wird intern immer als Monatswerte gespeichert. Quartals- und unregelmäßige Planung sind Eingabehilfen.
+1. Planung wird intern immer als Monatswerte gespeichert. „Gleichmäßig verteilen“ ist eine Eingabehilfe.
 2. Plan und Ist verwenden dieselbe Vorzeichenkonvention, sodass der Abgleich ohne Umrechnung möglich ist. Der Jahresansatz ist immer ≥ 0.
 3. Der Soll-/Ist-Abgleich erfolgt bei jeder Buchung und wird in den Plandaten festgehalten.
 4. Der Basisansatz ist bei aktiver Planung fix. Seine Höhe ändert sich danach ausschließlich durch Ansatzumbuchungen (`BUDGET_TRANSFER`).
 5. **Ansatzsperre:** Bei aktiver Planung wird eine Ist-Buchung auf einer `STANDARD`-Kostenstelle abgelehnt, wenn sie die Ist-Bewegung erhöht und der Haushaltsrest danach kleiner als 0 wäre. Entlastende Buchungen werden nie gesperrt. Die Prüfung erfolgt in der Domain-Schicht und in derselben Transaktion wie die Buchung.
 6. Eine Ansatzumbuchung berührt weder Ist-Werte noch Konten. Sie ändert nur die wirksamen Jahresansätze, die Summe aller Ansätze bleibt gleich.
 7. Der abgebende Ansatz darf nicht unter 0, nicht unter die Ist-Bewegung und nicht unter die Summe der Monatsplanwerte sinken.
-8. Die Verteilung auf Monate, Quartale, unregelmäßige Beträge und Rückstellungen innerhalb des Jahresansatzes wird in der Planung geändert, nicht per Buchung. Die Summe der Monatsplanwerte darf den wirksamen Jahresansatz nicht überschreiten.
+8. Die Verteilung auf Monate, unregelmäßige Beträge und die Zuführungen zur Rückstellung innerhalb des Jahresansatzes wird in der Planung geändert, nicht per Buchung. Die Summe der Monatsplanwerte darf den wirksamen Jahresansatz nicht überschreiten.
 9. Planänderungen sind nur in offenen Monaten möglich und werden im Audit-Protokoll festgehalten.
 10. Der Monatsplan sperrt nicht, Abweichungen werden nur angezeigt.
 11. Kostenstellen der Art „ohne Plan“ unterliegen keiner Sperre und führen nur Soll- und Haben-Summen. Für sie gibt es keine Planung.
-12. Die Summe der Monatsplanwerte darf den wirksamen Jahresansatz (Basisansatz + Ansatzumbuchungen) nicht übersteigen. Planwerte und Rückstellungsüberträge sind nie negativ.
+12. Die Summe der Monatsplanwerte und die Summe der Zuführungen dürfen den wirksamen Jahresansatz (Basisansatz + Ansatzumbuchungen) nicht übersteigen. Planwerte, Zuführungen und der Rückstellungsvortrag sind nie negativ.
 13. Abgeschlossene Monate und Jahre sind in der Planung gesperrt. Ein unverändertes Speichern ist weiterhin möglich.
-14. Quartals- und gleichmäßige Verteilung sind Eingabehilfen. Gespeichert werden immer Monatswerte, die Art (Monatlich, Quartal, Unregelmäßig, Rückstellung) ist nur eine Kennzeichnung.
+14. „Gleichmäßig verteilen“ ist eine Eingabehilfe. Gespeichert werden immer Monatswerte; `plan_mode` wird nicht mehr bedient.
 15. Planänderungen werden mit den geänderten Feldern im Audit-Protokoll festgehalten.
 16. Die Ist-Fortschreibung einer Kostenstelle richtet sich nach dem Entstehungsdatum (Planperiode), Konten, Abschlüsse und Signatur nach dem Buchungsdatum. Das Planjahr muss existieren und offen sein, sonst wird nicht gebucht (Architekturvorgabe 2.11).
-17. Rückstellungen sind virtuell, werden in einer reinen Domain-Funktion aus Zuführungen, Vortrag und Monatssummen der Ist-Bewegung berechnet und sind nie negativ. Abgeschlossene Monate werden von der Berechnung nicht verändert.
-18. Die Planungsart wird nicht mehr bedient; `plan_mode` bleibt wegen der Signatur unverändert im Schema.
+17. Rückstellungen sind virtuell und werden in reinen Domain-Funktionen (`reserve_rules`) aus Zuführungen, Vortrag und den Monatssummen der Ist-Bewegung berechnet; der Bestand ist nie negativ. Zuführungen werden maschinell verteilt, manuelle (`reserve_is_manual`) und abgeschlossene Monate bleiben unverändert. Entlastung und Vorträge sind Projektionen, die in derselben Transaktion wie die Buchung fortgeschrieben werden (`reserve_projection`), beim Neuaufbau und beim Programmstart neu berechnet werden und der Abschlussprüfung unterliegen. Eine zu geringe Rückstellung führt nur zu einem Hinweis, nie zu einer Sperre.
+18. Die Planungsart wird nicht mehr bedient; `plan_mode` bleibt wegen der Signatur unverändert im Schema und wird beim Speichern durchgereicht.
 
 ## 4a. Abschluss
 
@@ -95,7 +95,7 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 1. Währungsbeträge werden in Dialog und Auswertungen immer mit zwei Nachkommastellen und `€` angezeigt, z. B. `-1.234,56 €`.
 2. Negative Beträge sind eindeutig erkennbar.
 3. In der Buchungsmaske sperrt ein Betrag ≠ 0 in Soll oder Haben das jeweils andere Feld; bei 0 sind beide bedienbar.
-4. Nach Auswahl der Kostenstelle werden Haushaltsrestbetrag, Monatsplan und bisherige Rückstellung angezeigt, nach Auswahl des Kontos der aktuelle Kontostand. Bei der Ansatzumbuchung wird der abgebbare Ansatz der Kostenstelle angezeigt.
+4. Nach Auswahl der Kostenstelle werden Haushaltsrestbetrag, Monatsplan und Rückstellungsbestand (bis zum Planmonat) angezeigt, nach Auswahl des Kontos der aktuelle Kontostand. Bei der Ansatzumbuchung wird der abgebbare Ansatz der Kostenstelle angezeigt.
 5. Bei einer Ansatzsperre nennt die Meldung Haushaltsrest und fehlenden Betrag und bietet die Ansatzumbuchung an.
 6. Offene und abgeschlossene Monate sind in Dialogen und Auswertungen erkennbar.
 7. Fehlermeldungen nennen die konkrete Ursache.

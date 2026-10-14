@@ -246,6 +246,21 @@ class BookingDialog(MasterEditDialog):
         except PlanPeriodError as error:
             QMessageBox.warning(self, "Buchung nicht möglich", str(error))
             raise
+        self._show_reserve_notice()
+
+    def _show_reserve_notice(self) -> None:
+        """Hinweis nach dem Speichern, wenn die Rückstellung für die Zahlung nicht ausreicht."""
+        cost_center_id = self.leading_combo.currentData()
+        if self.booking_type() is not BookingType.COST_CENTER_TO_ACCOUNT or cost_center_id is None:
+            return
+        try:
+            notice = self._bookings.reserve_notice(
+                cost_center_id, _pydate(self.origin_date_edit.date())
+            )
+        except DomainError:
+            return
+        if notice:
+            QMessageBox.information(self, "Hinweis zur Rückstellung", notice)
 
     def _save_booking(self) -> None:
         soll, haben = _amount(self.soll_edit.text()), _amount(self.haben_edit.text())
@@ -309,10 +324,11 @@ def _amount(text: str) -> int:
 
 
 def _describe_cost_center(info: CostCenterInfo) -> str:
+    reserve = f"Rückstellungsbestand (bis Monat): {format_euro(info.reserve_cents)}"
     if not info.planning_active:
         return (
             f"Planung nicht aktiv · Bewegung {info.year}: {format_euro(info.movement_cents)} · "
-            f"Rückstellung bisher: {format_euro(info.reserve_cents)}"
+            f"{reserve}"
         )
     return (
         f"Haushaltsrest: {format_euro(info.remaining_cents)} "
@@ -320,5 +336,5 @@ def _describe_cost_center(info: CostCenterInfo) -> str:
         f"Bewegung {format_euro(info.movement_cents)})\n"
         f"Monatsplan: {format_euro(info.month_plan_cents)} · "
         f"Ist im Monat: {format_euro(info.month_movement_cents)} · "
-        f"Rückstellung bisher: {format_euro(info.reserve_cents)}"
+        f"{reserve}"
     )

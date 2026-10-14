@@ -42,6 +42,9 @@ def build_container(database_file: Path) -> Container:
     def uow_factory() -> SqlAlchemyUnitOfWork:
         return SqlAlchemyUnitOfWork(database.session_factory)
 
+    planning = PlanningService(uow_factory)
+    planning.refresh_reserves()
+
     return Container(
         database=database,
         auth=AuthService(uow_factory, Argon2PasswordHasher()),
@@ -50,7 +53,7 @@ def build_container(database_file: Path) -> Container:
         user_settings=UserSettingsService(uow_factory),
         booking_control=BookingControlService(uow_factory),
         bookings=BookingService(uow_factory),
-        planning=PlanningService(uow_factory),
+        planning=planning,
         closing=ClosingService(uow_factory),
         opening_balances=OpeningBalanceService(uow_factory),
         backup=BackupService(database, database_file),

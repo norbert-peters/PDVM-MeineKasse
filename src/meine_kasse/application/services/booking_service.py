@@ -12,6 +12,10 @@ from enum import StrEnum
 
 from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.services.booking_control_service import load_or_create_control
+from meine_kasse.application.services.reserve_projection import (
+    apply_projection,
+    project_cost_center,
+)
 from meine_kasse.domain.entities import (
     AuditEntry,
     Booking,
@@ -293,6 +297,8 @@ class BookingService:
                     uow.plans.save_plan(
                         CostCenterPlan(new_id(), cost_center_id, year, budget_transfer_cents=total)
                     )
+            for cost_center_id in sorted({plan.cost_center_id for plan in uow.plans.list_plans()}):
+                apply_projection(uow, cost_center_id, 0)
             uow.audit.add(
                 AuditEntry(
                     name="PROJECTIONS_REBUILT",
@@ -335,6 +341,13 @@ class BookingService:
             position = _position(uow, cost_center_id, year)
             actuals = uow.plans.actuals_for_year(cost_center_id, year)
             monthly = {plan.month: plan for plan in uow.plans.monthly_plans(cost_center_id, year)}
+            year_plan = uow.plans.get_plan(cost_center_id, year)
+            carry_in = year_plan.reserve_carry_in_cents if year_plan else 0
+            reserve_balance = (
+                carry_in
+                + sum(p.reserve_plan_cents for m, p in monthly.items() if m <= month)
+                - sum(a.reserve_actual_cents for a in actuals if a.month <= month)
+            )
             return CostCenterInfo(
                 cost_center_id=cost_center_id,
                 year=year,
@@ -344,8 +357,30 @@ class BookingService:
                 remaining_cents=position.remaining_cents,
                 month_plan_cents=monthly[month].plan_cents if month in monthly else 0,
                 month_movement_cents=sum(a.movement_cents for a in actuals if a.month == month),
-                reserve_cents=sum(a.reserve_actual_cents for a in actuals),
+                reserve_cents=reserve_balance,
             )
+
+    def reserve_notice(self, cost_center_id: str, plan_date: date) -> str | None:
+        """Hinweis, wenn die Rückstellung für die Zahlung im Planmonat nicht ausreicht.
+
+        Die Buchung wird dennoch ausgeführt (Architekturvorgabe 2.12). Ohne Rückstellung im
+        Planjahr (z. B. bei Planung in allen Monaten) gibt es keinen Hinweis.
+        """
+        with self._uow_factory() as uow:
+            cost_center = _get_cost_center(uow, cost_center_id)
+            for item in project_cost_center(uow, cost_center_id, plan_date.year):
+                if item.plan.year != plan_date.year or not item.has_reserve:
+                    continue
+                shortfall = item.result.shortfall.get(plan_date.month, 0)
+                if shortfall <= 0:
+                    return None
+                return (
+                    f"Die Rückstellung der Kostenstelle {cost_center.number} {cost_center.name} "
+                    f"reicht für die Zahlung im Monat {plan_date.month:02d}/{plan_date.year} "
+                    f"nicht aus: Es fehlen {format_euro(shortfall)}. "
+                    "Die Buchung wurde dennoch ausgeführt."
+                )
+        return None
 
     def account_balance(self, account_id: str) -> int:
         """Kontostand = Anfangssaldo (Vortrag) + Bewegung (Haben - Soll) aller Buchungen."""
@@ -536,6 +571,14 @@ class BookingService:
                     credit_cents=actual.credit_cents + delta.credit_delta_cents,
                 )
             )
+
+        first_year: dict[str, int] = {}
+        for delta in effects.actuals:
+            first_year[delta.cost_center_id] = min(
+                delta.year, first_year.get(delta.cost_center_id, delta.year)
+            )
+        for cost_center_id, year in first_year.items():
+            apply_projection(uow, cost_center_id, year)
 
 
 def _position(uow: UnitOfWork, cost_center_id: str, year: int) -> BudgetPosition:

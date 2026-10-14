@@ -10,6 +10,7 @@ from datetime import date
 
 from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.services.booking_control_service import load_or_create_control
+from meine_kasse.application.services.reserve_projection import projection_mismatch_cost_centers
 from meine_kasse.domain.entities import AuditEntry, ClosureReopening, PeriodClosure, YearClosure
 from meine_kasse.domain.enums import ClosureKind
 from meine_kasse.domain.errors import ValidationError
@@ -448,6 +449,11 @@ def _consistency_problems(uow: UnitOfWork, year: int, month: int) -> list[str]:
         problems.append(
             f"Kostenstelle {labels.get(cost_center_id, cost_center_id)}: Die Ist-Fortschreibung "
             "stimmt nicht mit den Buchungen überein (Projektionen neu aufbauen)."
+        )
+    for cost_center_id in projection_mismatch_cost_centers(uow, year):
+        problems.append(
+            f"Kostenstelle {labels.get(cost_center_id, cost_center_id)}: Die Rückstellung "
+            "stimmt nicht mit Plan und Ist überein (Projektionen neu aufbauen)."
         )
 
     transfers = {

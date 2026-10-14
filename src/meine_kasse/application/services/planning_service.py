@@ -1,8 +1,12 @@
-"""Kostenstellenplanung: Haushaltsansatz und Monatswerte (siehe Architekturvorgabe 2.7, 2.8).
+"""Kostenstellenplanung: Haushaltsansatz, Monatswerte, Rückstellungen (Architekturvorgabe 2.7,
+2.8, 2.12).
 
 - Der Basisansatz ist bei aktiver Planung fix und ändert sich dann nur per Ansatzumbuchung.
 - Die Verteilung auf Monate läuft hier, ohne Buchung, solange die Summe im Jahresansatz bleibt.
-- Abgeschlossene Monate sind gesperrt. Jede Änderung wird protokolliert.
+- Die Zuführungen zur Rückstellung werden maschinell verteilt. Manuell gesetzte Monate bleiben,
+  abgeschlossene Monate sind gesperrt.
+- Entlastung und Vortrag der Rückstellung sind Projektionen aus Plan und Ist.
+- Jede Änderung wird protokolliert.
 """
 
 import json
@@ -11,6 +15,7 @@ from dataclasses import dataclass, replace
 
 from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.services.booking_control_service import load_or_create_control
+from meine_kasse.application.services.reserve_projection import apply_projection
 from meine_kasse.domain.entities import AuditEntry, CostCenter, CostCenterPlan, MonthlyPlan
 from meine_kasse.domain.enums import CostCenterKind, PlanMode
 from meine_kasse.domain.errors import NotFoundError, PeriodError, ValidationError
@@ -19,8 +24,15 @@ from meine_kasse.domain.repositories import UnitOfWork
 from meine_kasse.domain.services.planning_rules import (
     MONTHS,
     check_distribution,
+    check_reserve_distribution,
     validate_month_amounts,
     validate_plan_amounts,
+)
+from meine_kasse.domain.services.reserve_rules import (
+    ReserveYear,
+    compute_reserve_year,
+    distribute_reserve,
+    plan_shortfalls,
 )
 from meine_kasse.domain.value_objects.money import format_euro
 
@@ -32,9 +44,15 @@ _FIXED_BASE_MESSAGE = (
 
 @dataclass(frozen=True, slots=True)
 class MonthPlanInput:
+    """Eingabe eines Planmonats.
+
+    `reserve_plan_cents=None` bedeutet: Die Zuführung wird maschinell berechnet. Ein Betrag
+    setzt sie manuell und schützt sie vor der maschinellen Verteilung.
+    """
+
     month: int
     plan_cents: int
-    reserve_plan_cents: int = 0
+    reserve_plan_cents: int | None = None
     plan_mode: PlanMode = PlanMode.MONTHLY
 
 
@@ -45,6 +63,9 @@ class PlanMonthView:
     month: int
     plan_cents: int
     reserve_plan_cents: int
+    reserve_is_manual: bool
+    reserve_release_cents: int
+    reserve_balance_cents: int
     plan_mode: PlanMode
     debit_cents: int
     credit_cents: int
@@ -69,7 +90,9 @@ class PlanView:
     base_budget_cents: int
     budget_transfer_cents: int
     reserve_carry_in_cents: int
+    reserve_carry_in_editable: bool
     reserve_carry_out_cents: int
+    reserve_notices: tuple[str, ...]
     months: tuple[PlanMonthView, ...]
 
     @property
@@ -97,6 +120,31 @@ class PlanView:
         return not self.planning_enabled and not self.year_closed
 
 
+@dataclass(frozen=True, slots=True)
+class ReservePreview:
+    """Ergebnis der maschinellen Rückstellungsrechnung für die Anzeige im Planungsdialog."""
+
+    reserve_plan: dict[int, int]
+    manual: frozenset[int]
+    release: dict[int, int]
+    balance: dict[int, int]
+    carry_in_cents: int
+    carry_out_cents: int
+    notices: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _Resolved:
+    plan_cents: dict[int, int]
+    reserve_plan: dict[int, int]
+    manual: frozenset[int]
+    modes: dict[int, PlanMode]
+    carry_in_cents: int
+    effective_budget_cents: int
+    year_result: ReserveYear
+    notices: tuple[str, ...]
+
+
 class PlanningService:
     def __init__(self, uow_factory: UnitOfWorkFactory, today: Today = local_today) -> None:
         self._uow_factory = uow_factory
@@ -120,21 +168,29 @@ class PlanningService:
             actuals = {a.month: a for a in uow.plans.actuals_for_year(cost_center_id, year)}
             closed_months = uow.closures.closed_months()
             year_closed = year in uow.closures.closed_years()
+            carry_in = _resolve_carry_in(uow, cost_center_id, year, None, strict=False)
+            supplied, released = carry_in, 0
             months = []
             for month in MONTHS:
                 planned = monthly.get(month)
                 actual = actuals.get(month)
+                supplied += planned.reserve_plan_cents if planned else 0
+                released += actual.reserve_actual_cents if actual else 0
                 months.append(
                     PlanMonthView(
                         month=month,
                         plan_cents=planned.plan_cents if planned else 0,
                         reserve_plan_cents=planned.reserve_plan_cents if planned else 0,
+                        reserve_is_manual=planned.reserve_is_manual if planned else False,
+                        reserve_release_cents=actual.reserve_actual_cents if actual else 0,
+                        reserve_balance_cents=supplied - released,
                         plan_mode=planned.plan_mode if planned else PlanMode.MONTHLY,
                         debit_cents=actual.debit_cents if actual else 0,
                         credit_cents=actual.credit_cents if actual else 0,
                         is_closed=year_closed or (year, month) in closed_months,
                     )
                 )
+            effective = plan.effective_budget_cents if plan else 0
             return PlanView(
                 cost_center_id=cost_center_id,
                 year=year,
@@ -142,10 +198,70 @@ class PlanningService:
                 year_closed=year_closed,
                 base_budget_cents=plan.base_budget_cents if plan else 0,
                 budget_transfer_cents=plan.budget_transfer_cents if plan else 0,
-                reserve_carry_in_cents=plan.reserve_carry_in_cents if plan else 0,
-                reserve_carry_out_cents=plan.reserve_carry_out_cents if plan else 0,
+                reserve_carry_in_cents=carry_in,
+                reserve_carry_in_editable=_carry_in_editable(uow, cost_center_id, year),
+                reserve_carry_out_cents=(plan.reserve_carry_out_cents if plan else carry_in),
+                reserve_notices=_notices(
+                    year,
+                    {item.month: item.plan_cents for item in months},
+                    {item.month: item.reserve_plan_cents for item in months},
+                    carry_in,
+                    effective,
+                ),
                 months=tuple(months),
             )
+
+    def preview_reserve(
+        self,
+        cost_center_id: str,
+        year: int,
+        *,
+        base_budget_cents: int,
+        carry_in_cents: int | None,
+        months: Sequence[MonthPlanInput],
+    ) -> ReservePreview:
+        """Berechnet die Rückstellung für die Eingaben, ohne zu speichern (Live-Anzeige)."""
+        validate_plan_amounts(base_cents=base_budget_cents, carry_in_cents=carry_in_cents or 0)
+        for item in months:
+            validate_month_amounts(item.month, item.plan_cents, item.reserve_plan_cents)
+        with self._uow_factory() as uow:
+            _get_planned_cost_center(uow, cost_center_id)
+            resolved = _resolve(
+                uow,
+                cost_center_id,
+                year,
+                base_budget_cents=base_budget_cents,
+                carry_in_cents=carry_in_cents,
+                months=months,
+                strict=False,
+            )
+        result = resolved.year_result
+        return ReservePreview(
+            reserve_plan=resolved.reserve_plan,
+            manual=resolved.manual,
+            release=result.release,
+            balance=result.balance,
+            carry_in_cents=resolved.carry_in_cents,
+            carry_out_cents=result.carry_out_cents,
+            notices=resolved.notices,
+        )
+
+    def refresh_reserves(self) -> None:
+        """Rechnet Entlastung und Vorträge aller Kostenstellen neu (z. B. nach einer Migration)."""
+        with self._uow_factory() as uow:
+            changed = False
+            for cost_center_id in sorted({plan.cost_center_id for plan in uow.plans.list_plans()}):
+                changed = apply_projection(uow, cost_center_id, 0) or changed
+            if changed:
+                uow.audit.add(
+                    AuditEntry(
+                        name="RESERVES_REFRESHED",
+                        entity="monthly_actuals",
+                        entity_id=None,
+                        user_id=None,
+                    )
+                )
+                uow.commit()
 
     def save_plan(
         self,
@@ -153,15 +269,13 @@ class PlanningService:
         year: int,
         *,
         base_budget_cents: int,
-        reserve_carry_in_cents: int = 0,
-        reserve_carry_out_cents: int = 0,
+        reserve_carry_in_cents: int | None = None,
         months: Sequence[MonthPlanInput],
         actor_id: str,
     ) -> None:
+        """Speichert den Plan. Der Rückstellungsvortrag ist nur ohne Vorjahresplan manuell."""
         validate_plan_amounts(
-            base_cents=base_budget_cents,
-            carry_in_cents=reserve_carry_in_cents,
-            carry_out_cents=reserve_carry_out_cents,
+            base_cents=base_budget_cents, carry_in_cents=reserve_carry_in_cents or 0
         )
         seen: set[int] = set()
         for item in months:
@@ -196,27 +310,40 @@ class PlanningService:
                         "Die Planung kann dort nicht mehr geändert werden."
                     )
 
+            resolved = _resolve(
+                uow,
+                cost_center_id,
+                year,
+                base_budget_cents=base_budget_cents,
+                carry_in_cents=reserve_carry_in_cents,
+                months=months,
+                strict=True,
+            )
             new_plan = replace(
                 plan,
                 base_budget_cents=base_budget_cents,
-                reserve_carry_in_cents=reserve_carry_in_cents,
-                reserve_carry_out_cents=reserve_carry_out_cents,
+                reserve_carry_in_cents=resolved.carry_in_cents,
+                reserve_carry_out_cents=resolved.year_result.carry_out_cents,
+            )
+            check_distribution(new_plan.effective_budget_cents, sum(resolved.plan_cents.values()))
+            check_reserve_distribution(
+                new_plan.effective_budget_cents, sum(resolved.reserve_plan.values())
             )
             new_months = dict(existing_months)
-            for item in months:
-                current = existing_months.get(item.month)
-                new_months[item.month] = MonthlyPlan(
+            for month in MONTHS:
+                current = existing_months.get(month)
+                candidate = MonthlyPlan(
                     id=current.id if current else new_id(),
                     cost_center_plan_id=new_plan.id,
-                    month=item.month,
-                    plan_cents=item.plan_cents,
-                    reserve_plan_cents=item.reserve_plan_cents,
-                    plan_mode=item.plan_mode,
+                    month=month,
+                    plan_cents=resolved.plan_cents[month],
+                    reserve_plan_cents=resolved.reserve_plan[month],
+                    plan_mode=resolved.modes[month],
+                    reserve_is_manual=month in resolved.manual,
                 )
-            check_distribution(
-                new_plan.effective_budget_cents,
-                sum(month.plan_cents for month in new_months.values()),
-            )
+                if current is None and not _has_content(candidate):
+                    continue
+                new_months[month] = candidate
 
             before = _snapshot(existing_plan, existing_months)
             after = _snapshot(new_plan, new_months)
@@ -225,11 +352,10 @@ class PlanningService:
                 return
 
             uow.plans.save_plan(new_plan)
-            for item in months:
-                current = existing_months.get(item.month)
-                if current is None and not _has_content(item):
-                    continue
-                uow.plans.save_monthly_plan(new_months[item.month])
+            for month, candidate in new_months.items():
+                if existing_months.get(month) != candidate:
+                    uow.plans.save_monthly_plan(candidate)
+            apply_projection(uow, cost_center_id, year)
             uow.audit.add(
                 AuditEntry(
                     name="PLAN_UPDATED",
@@ -256,20 +382,155 @@ def _get_planned_cost_center(uow: UnitOfWork, cost_center_id: str) -> CostCenter
     return cost_center
 
 
-def _has_content(item: MonthPlanInput) -> bool:
-    return (
-        bool(item.plan_cents or item.reserve_plan_cents) or item.plan_mode is not PlanMode.MONTHLY
+def _has_content(item: MonthlyPlan) -> bool:
+    return bool(
+        item.plan_cents
+        or item.reserve_plan_cents
+        or item.reserve_is_manual
+        or item.plan_mode is not PlanMode.MONTHLY
     )
 
 
 def _differs(current: MonthlyPlan | None, item: MonthPlanInput) -> bool:
-    if current is None:
-        return _has_content(item)
-    return (current.plan_cents, current.reserve_plan_cents, current.plan_mode) != (
-        item.plan_cents,
-        item.reserve_plan_cents,
-        item.plan_mode,
+    """Ändert die Eingabe den Monat? Eine maschinelle Zuführung (None) gilt als unverändert."""
+    plan_cents = current.plan_cents if current else 0
+    reserve = current.reserve_plan_cents if current else 0
+    mode = current.plan_mode if current else PlanMode.MONTHLY
+    return (
+        item.plan_cents != plan_cents
+        or (item.reserve_plan_cents is not None and item.reserve_plan_cents != reserve)
+        or item.plan_mode is not mode
     )
+
+
+def _carry_in_editable(uow: UnitOfWork, cost_center_id: str, year: int) -> bool:
+    """Der Vortrag ist nur manuell, wenn es keinen Vorjahresplan gibt und der Januar offen ist."""
+    return (
+        uow.plans.get_plan(cost_center_id, year - 1) is None
+        and year not in uow.closures.closed_years()
+        and (year, 1) not in uow.closures.closed_months()
+    )
+
+
+def _notices(
+    year: int,
+    plan_cents: dict[int, int],
+    reserve_plan: dict[int, int],
+    carry_in_cents: int,
+    effective_budget_cents: int,
+) -> tuple[str, ...]:
+    notices = [
+        f"Monat {month:02d}/{year}: Die Rückstellung deckt die geplante Zahlung nicht, "
+        f"es fehlen {format_euro(shortfall)}."
+        for month, shortfall in plan_shortfalls(carry_in_cents, reserve_plan, plan_cents).items()
+    ]
+    total = sum(reserve_plan.values())
+    if total > effective_budget_cents:
+        notices.append(
+            f"Die Zuführungen ({format_euro(total)}) übersteigen den Jahresansatz "
+            f"({format_euro(effective_budget_cents)}). Bitte die Rückstellung neu verteilen."
+        )
+    return tuple(notices)
+
+
+def _resolve(
+    uow: UnitOfWork,
+    cost_center_id: str,
+    year: int,
+    *,
+    base_budget_cents: int,
+    carry_in_cents: int | None,
+    months: Sequence[MonthPlanInput],
+    strict: bool,
+) -> _Resolved:
+    """Bestimmt Planwerte, Zuführungen (maschinell oder manuell) und Rückstellungsrechnung.
+
+    Abgeschlossene Monate behalten ihre Werte. Mit `strict` werden unzulässige Vortragsänderungen
+    abgelehnt, sonst (Vorschau) bleibt der abgeleitete bzw. gespeicherte Vortrag.
+    """
+    plan = uow.plans.get_plan(cost_center_id, year)
+    existing = {item.month: item for item in uow.plans.monthly_plans(cost_center_id, year)}
+    closed_months = uow.closures.closed_months()
+    year_closed = year in uow.closures.closed_years()
+    inputs = {item.month: item for item in months}
+
+    plan_cents: dict[int, int] = {}
+    modes: dict[int, PlanMode] = {}
+    fixed: dict[int, int] = {}
+    manual: set[int] = set()
+    free: list[int] = []
+    for month in MONTHS:
+        current = existing.get(month)
+        modes[month] = current.plan_mode if current else PlanMode.MONTHLY
+        if year_closed or (year, month) in closed_months:
+            plan_cents[month] = current.plan_cents if current else 0
+            fixed[month] = current.reserve_plan_cents if current else 0
+            if current is not None and current.reserve_is_manual:
+                manual.add(month)
+            continue
+        item = inputs.get(month)
+        if item is None:
+            keep_manual = current is not None and current.reserve_is_manual
+            item = MonthPlanInput(
+                month,
+                current.plan_cents if current else 0,
+                current.reserve_plan_cents if current is not None and keep_manual else None,
+                modes[month],
+            )
+        plan_cents[month] = item.plan_cents
+        modes[month] = item.plan_mode
+        if item.reserve_plan_cents is None:
+            free.append(month)
+        else:
+            fixed[month] = item.reserve_plan_cents
+            manual.add(month)
+
+    carry_in = _resolve_carry_in(uow, cost_center_id, year, carry_in_cents, strict=strict)
+    effective = base_budget_cents + (plan.budget_transfer_cents if plan else 0)
+    reserve_plan = distribute_reserve(
+        budget_cents=effective,
+        carry_in_cents=carry_in,
+        plan_cents=plan_cents,
+        fixed=fixed,
+        free_months=free,
+    )
+    movement = {a.month: a.movement_cents for a in uow.plans.actuals_for_year(cost_center_id, year)}
+    return _Resolved(
+        plan_cents=plan_cents,
+        reserve_plan=reserve_plan,
+        manual=frozenset(manual),
+        modes=modes,
+        carry_in_cents=carry_in,
+        effective_budget_cents=effective,
+        year_result=compute_reserve_year(carry_in, reserve_plan, movement),
+        notices=_notices(year, plan_cents, reserve_plan, carry_in, effective),
+    )
+
+
+def _resolve_carry_in(
+    uow: UnitOfWork, cost_center_id: str, year: int, requested: int | None, *, strict: bool
+) -> int:
+    plan = uow.plans.get_plan(cost_center_id, year)
+    stored = plan.reserve_carry_in_cents if plan else 0
+    previous = uow.plans.get_plan(cost_center_id, year - 1)
+    if previous is not None:
+        derived = previous.reserve_carry_out_cents
+        if strict and requested is not None and requested != derived:
+            raise ValidationError(
+                "Der Rückstellungsvortrag wird aus dem Vorjahr übernommen und kann nicht "
+                "geändert werden."
+            )
+        return derived
+    if requested is None or requested == stored:
+        return stored
+    if not _carry_in_editable(uow, cost_center_id, year):
+        if strict:
+            raise PeriodError(
+                f"Der Januar {year} ist abgeschlossen. Der Rückstellungsvortrag kann nicht "
+                "mehr geändert werden."
+            )
+        return stored
+    return requested
 
 
 def _snapshot(plan: CostCenterPlan | None, months: dict[int, MonthlyPlan]) -> dict[str, str]:
@@ -282,5 +543,8 @@ def _snapshot(plan: CostCenterPlan | None, months: dict[int, MonthlyPlan]) -> di
         item = months.get(month)
         values[f"m{month:02d}_plan"] = format_euro(item.plan_cents if item else 0)
         values[f"m{month:02d}_reserve"] = format_euro(item.reserve_plan_cents if item else 0)
+        values[f"m{month:02d}_reserve_manual"] = (
+            "manuell" if item is not None and item.reserve_is_manual else "maschinell"
+        )
         values[f"m{month:02d}_mode"] = (item.plan_mode if item else PlanMode.MONTHLY).value
     return values

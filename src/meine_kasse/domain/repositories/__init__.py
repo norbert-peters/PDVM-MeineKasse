@@ -146,6 +146,10 @@ class PlanRepository(Protocol):
 
     def list_plans(self) -> Sequence[CostCenterPlan]: ...
 
+    def plans_of_cost_center(self, cost_center_id: str) -> Sequence[CostCenterPlan]:
+        """Alle Jahrespläne einer Kostenstelle, aufsteigend nach Jahr."""
+        ...
+
     def monthly_plans(self, cost_center_id: str, year: int) -> Sequence[MonthlyPlan]: ...
 
     def monthly_plans_for_month(self, year: int, month: int) -> Sequence[tuple[str, MonthlyPlan]]:

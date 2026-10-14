@@ -49,16 +49,16 @@ Betroffen: `effects_of`, `rebuild_projections`, Abschlussprüfung (`projection_m
 | --- | --- |
 | Virtuelles Konto je Kostenstelle: kein Eingriff in Konten/Kontrollsumme, keine Synchronisation | Rückstellung ist nicht direkt bebuchbar; Korrektur nur über Plan (manuelle Monatswerte) |
 | Berechnung nach **Monatssummen** statt Buchungsreihenfolge: deterministisch und neu aufbaubar (Entwicklungsregel 3.11) | Eine Buchung im Frühjahr kann die Entlastung späterer Monate verändern (Kettenberechnung über das Jahr) |
-| „Erhöhen, nie erniedrigen“ plus „nie negativ“ ergibt einfache, prüfbare Invarianten | Erhöhung ist nur in **offenen** Monaten möglich; bleibt ein Fehlbetrag, nur Hinweis |
+| „Vorziehen“ der Zuführung vor die Zahlung plus „nie negativ“ ergibt einfache, prüfbare Invarianten (Summe bleibt, Bestand ≥ 0) | Die Zuführungen späterer Monate werden dafür geringer; bleibt ein Fehlbetrag (z. B. durch gesperrte Monate), nur Hinweis |
 | Ansatzsperre bleibt unverändert; Rückstellung teilt den Ansatz nur auf | Vorzeichenkonvention weicht optisch von 2.2 ab (siehe Entscheidung E1) |
 
-Das Verfahren der Verteilung (Beispiel): Versicherung, Jahresansatz 1.200 €, Planwerte März 600 €, September 600 €, Vortrag 0.
+Das Verfahren der Verteilung (Beispiel, so umgesetzt): Versicherung, Jahresansatz 1.200 €, Planwerte März 600 €, September 600 €, Vortrag 0.
 
 1. Gleichmäßig: 100 €/Monat. Bestand im März 300 € < 600 € → Fehlbetrag 300 €.
-2. Erhöhung der offenen Monate bis März um je 100 € → Januar–März je 200 €. Bestand im März 600 €, nach der Zahlung 0.
-3. April–September je 100 € → Bestand im September 600 €, nach der Zahlung 0. Summe der Zuführungen 1.200 € = Jahresansatz.
+2. Januar–März werden um je 100 € erhöht (je 200 €), die Monate nach dem März erhalten dafür weniger. Bestand im März 600 €, nach der Zahlung 0.
+3. Im September fehlen danach noch 200 €: April–September erhalten wieder je 100 €, Oktober–Dezember 0 €. Bestand im September 600 € (kumuliert 1.200 € abzüglich 600 € aus dem März), nach der Zahlung 0. Summe der Zuführungen 1.200 € = Jahresansatz.
 
-Die Erhöhung früher Monate ist deterministisch (gleichmäßig auf alle offenen Monate bis zum Zahlungsmonat) und muss in der Umsetzung mit Tests festgeschrieben werden (auch Vortrag, nicht belegte Monate, abgeschlossene Monate, manuelle Monate).
+Die Verschiebung ist deterministisch: Eine Lücke wird in den freien Monaten seit der letzten Lücke ausgeglichen, die Gegenbuchung erfolgt gleichmäßig aus den Monaten danach. Manuell gesetzte und abgeschlossene Monate werden nie angefasst. Das Verfahren ist in `tests/unit/test_reserve_rules.py` festgeschrieben, einschließlich Zufallsprüfungen (keine Lücke, wenn die geplanten Zahlungen den Ansatz nicht übersteigen).
 
 **Wegfall der Planungsart und der Quartalsverteilung:** Sinnvoll, weil Gleichmäßig und Rückstellung jetzt feste Abläufe sind. Nachteil: Die Spalte `plan_mode` muss wegen der Signatur bleiben (nur nicht mehr bedient). Die Quartalsmaske (`quarter_amounts_dialog.py`) und die Modus-Auswahl im Planungsdialog entfallen.
 
@@ -144,7 +144,7 @@ Phase 1 und 3 sind unabhängig und können parallel laufen. Phase 5 und 6 ebenfa
 | 1 | `qtbase_de` (Ja/Nein), `FilterComboBox` in Buchungs- und Planungsdialog, Datumsvortrag, Tag-/Datumsparser, Standardknopf „Speichern“ im Planungsdialog, Filter Konto/Kostenstelle in der Buchungsliste | – | Parser (Tag, Teildatum, ungültig), Standarddatum (anderer Monat), Repository-Filter |
 | 2 (erledigt) | `DataTable` (Spaltenfilter, Sortierung nach Rohwerten) in Buchungsliste, Stammdatenlisten und Wiedereröffnungshistorie, `user_settings` samt Service, persistente Sortierung. Monatsraster und Anfangssalden bleiben ohne Filter/Sortierung (Eingabetabellen) | 0004 `user_settings` | Sortierung Beträge/Datum, Persistenz je Anwender, Filter kombinierbar |
 | 3 (erledigt) | `effects_of`/`rebuild_projections` auf Planperiode, Vorjahr-Regel samt Hinweisdialog, Storno-Regel, Abschlussprüfung auf Planperiode, Anzeige Planjahr in der Maske, Spalte „Entstehung“ in der Buchungsliste | 0005 (einmaliger Neuaufbau der Ist-Werte) | Entstehung im Vorjahr (Plan vorhanden/fehlt/abgeschlossen), geschlossener Planmonat im offenen Jahr, Änderung des Entstehungsdatums, Rebuild identisch zur Fortschreibung, Migration |
-| 4 | `reserve_rules` (Domain, reine Funktion), Auto-Verteilung im Planungsdialog, `reserve_is_manual`, Entlastung in `monthly_actuals`, Hinweis bei Unterdeckung, Jahresvortrag, Wegfall Modus/Quartale | 0005 `reserve_is_manual` | Beispiel aus Abschnitt 3, Vortrag, nie negativ, nie erniedrigen, geschlossene/manuelle Monate, Erstattung, Neuaufbau, Rollback, Jahresabschluss schreibt Vortrag fest |
+| 4 (erledigt) | `reserve_rules` (Domain, reine Funktionen), maschinelle Verteilung mit Live-Vorschau im Planungsdialog, `reserve_is_manual`, Entlastung in `monthly_actuals` bei jeder Buchung, Hinweis bei Unterdeckung, Jahresvortrag über mehrere Jahre, Prüfung beim Abschluss, Neuberechnung beim Start, Wegfall Planungsart/Quartale, „Speichern“ als Standardknopf | 0006 `reserve_is_manual` (Altbestand gilt als manuell) | Beispiel aus Abschnitt 3, Vortrag, nie negativ, geschlossene/manuelle Monate, Erstattung, Reihenfolgeunabhängigkeit, Neuaufbau, Abschlussprüfung, Migration |
 | 5 | `cash_role` am Konto, `account_balance_checks`, Cash-Management-Dialog | 0006 | Kontenabgleich mit Differenz, Rollen eindeutig, Zahlungskonto-Rest, Betriebsmittel ↔ Rückstellungsbestand |
 | 6 | PDF-Port und Renderer, Dateinamenbildung, `documents`, Archivdialog, Sicherung inkl. Dokumente, Selbsttest | 0007 `documents` | Dateiname (40 Zeichen, unzulässige Zeichen), Hash, Sicherung enthält Dokumente, Selbsttest im gepackten Programm |
 | 7 | Datenquellen, Spaltenkatalog mit `ADDITIVE`/`NON_ADDITIVE`, Filterbedingungen (Whitelist), Gruppierung mit Zwischensummen, „nur Summen“ je Ebene, Kopfsumme, `report_definitions`, Auswertungsdialog, PDF-Ausgabe | 0008 `report_definitions` | Summen je Datenquelle, keine Mehrfachzählung von Ansatz/Restansatz, Gruppensummen, gespeicherte Auswertung lädt identisch, ungültige Spalten/Operatoren werden abgelehnt |
