@@ -1,23 +1,20 @@
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from meine_kasse.domain.errors import DomainError
+from meine_kasse.presentation.widgets.data_table import DataTable, SortItem, TablePreferences
 
 _INACTIVE_COLOR = QColor("#808080")
 
@@ -32,17 +29,25 @@ class ListRow:
 class MasterListDialog(QDialog):
     """Basis für Listen mit Neu, Bearbeiten und (De-)Aktivieren. Stammdaten werden nie gelöscht."""
 
-    def __init__(self, title: str, columns: Sequence[str], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        title: str,
+        columns: Sequence[str],
+        parent: QWidget | None = None,
+        *,
+        table_key: str | None = None,
+        preferences: TablePreferences | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(860, 460)
 
-        self.table = QTableWidget(0, len(columns) + 1)
-        self.table.setHorizontalHeaderLabels([*columns, "Status"])
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.verticalHeader().setVisible(False)
+        self.data_table = DataTable(
+            [*columns, "Status"],
+            table_key=table_key or f"master.{title.casefold()}",
+            preferences=preferences,
+        )
+        self.table = self.data_table.table
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.itemSelectionChanged.connect(self._update_buttons)
         self.table.itemDoubleClicked.connect(lambda _item: self._edit_selected())
@@ -68,7 +73,7 @@ class MasterListDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.show_inactive)
-        layout.addWidget(self.table)
+        layout.addWidget(self.data_table)
         layout.addLayout(self.button_row)
 
     # Von Unterklassen bereitzustellen
@@ -95,11 +100,7 @@ class MasterListDialog(QDialog):
         return button
 
     def selected_id(self) -> str | None:
-        row = self.table.currentRow()
-        if row < 0 or not self.table.selectedItems():
-            return None
-        item = self.table.item(row, 0)
-        return None if item is None else str(item.data(Qt.ItemDataRole.UserRole))
+        return self.data_table.selected_id()
 
     def refresh(self) -> None:
         keep = self.selected_id()
@@ -112,13 +113,12 @@ class MasterListDialog(QDialog):
         for index, row in enumerate(rows):
             values = [*row.cells, "Aktiv" if row.active else "Inaktiv"]
             for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setData(Qt.ItemDataRole.UserRole, row.id)
+                item = SortItem(value, row_id=row.id)
                 if not row.active:
                     item.setForeground(QBrush(_INACTIVE_COLOR))
                 self.table.setItem(index, column, item)
-            if row.id == keep:
-                self.table.selectRow(index)
+        self.data_table.apply()
+        self.data_table.select_id(keep)
         self._update_buttons()
 
     def _update_buttons(self) -> None:

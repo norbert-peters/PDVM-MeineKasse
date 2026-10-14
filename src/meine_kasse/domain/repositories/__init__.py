@@ -165,11 +165,24 @@ class PlanRepository(Protocol):
     def delete_actual(self, actual_id: str) -> None: ...
 
 
+class UserSettingRepository(Protocol):
+    """Anwendereinstellungen als JSON-Text je Anwender und Schlüssel."""
+
+    def get(self, user_id: str, key: str) -> str | None: ...
+
+    def save(self, user_id: str, key: str, value_json: str) -> None: ...
+
+    def delete(self, user_id: str, key: str) -> None: ...
+
+
 class UnitOfWork(Protocol):
     """Eine Transaktion. Ohne `commit()` wird beim Verlassen zurückgerollt."""
 
     @property
     def users(self) -> UserRepository: ...
+
+    @property
+    def user_settings(self) -> UserSettingRepository: ...
 
     @property
     def cost_centers(self) -> CostCenterRepository: ...

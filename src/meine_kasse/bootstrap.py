@@ -12,6 +12,7 @@ from meine_kasse.application.services.master_data_service import MasterDataServi
 from meine_kasse.application.services.opening_balance_service import OpeningBalanceService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
+from meine_kasse.application.services.user_settings_service import UserSettingsService
 from meine_kasse.infrastructure.database.migrate import upgrade_database
 from meine_kasse.infrastructure.database.session import Database
 from meine_kasse.infrastructure.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -24,6 +25,7 @@ class Container:
     auth: AuthService
     master_data: MasterDataService
     users: UserService
+    user_settings: UserSettingsService
     booking_control: BookingControlService
     bookings: BookingService
     planning: PlanningService
@@ -45,6 +47,7 @@ def build_container(database_file: Path) -> Container:
         auth=AuthService(uow_factory, Argon2PasswordHasher()),
         master_data=MasterDataService(uow_factory),
         users=UserService(uow_factory),
+        user_settings=UserSettingsService(uow_factory),
         booking_control=BookingControlService(uow_factory),
         bookings=BookingService(uow_factory),
         planning=PlanningService(uow_factory),

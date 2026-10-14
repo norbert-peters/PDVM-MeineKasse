@@ -3,7 +3,6 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -12,8 +11,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +27,7 @@ from meine_kasse.domain.errors import DomainError
 from meine_kasse.domain.value_objects.money import format_euro
 from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
 from meine_kasse.presentation.labels import BOOKING_TYPE_LABELS, MONTH_NAMES, format_date
+from meine_kasse.presentation.widgets.data_table import AUTO, DataTable, SortItem, TablePreferences
 
 _CLOSED_BACKGROUND = QBrush(QColor("#e6e6e6"))
 _CLOSED_FOREGROUND = QBrush(QColor("#707070"))
@@ -66,6 +64,8 @@ class BookingListDialog(QDialog):
         control: BookingControlService,
         actor_id: str,
         parent: QWidget | None = None,
+        *,
+        preferences: TablePreferences | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Buchungen")
@@ -97,12 +97,8 @@ class BookingListDialog(QDialog):
         filter_row.addStretch()
         filter_row.addWidget(self.status_label)
 
-        self.table = QTableWidget(0, len(_COLUMNS))
-        self.table.setHorizontalHeaderLabels(_COLUMNS)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.verticalHeader().setVisible(False)
+        self.data_table = DataTable(_COLUMNS, table_key="bookings", preferences=preferences)
+        self.table = self.data_table.table
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
@@ -130,7 +126,7 @@ class BookingListDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addLayout(filter_row)
-        layout.addWidget(self.table)
+        layout.addWidget(self.data_table)
         layout.addLayout(buttons)
         self.refresh()
 
@@ -142,11 +138,7 @@ class BookingListDialog(QDialog):
     # Daten
 
     def selected_id(self) -> str | None:
-        row = self.table.currentRow()
-        if row < 0 or not self.table.selectedItems():
-            return None
-        item = self.table.item(row, 0)
-        return None if item is None else str(item.data(Qt.ItemDataRole.UserRole))
+        return self.data_table.selected_id()
 
     def refresh(self) -> None:
         keep = self.selected_id()
@@ -167,22 +159,24 @@ class BookingListDialog(QDialog):
         self._views = {view.id: view for view in views}
         self.table.setRowCount(len(views))
         for row, view in enumerate(views):
-            soll = format_euro(view.amount_cents) if view.entry_side is Side.DEBIT else ""
-            haben = format_euro(view.amount_cents) if view.entry_side is Side.CREDIT else ""
-            values = [
-                format_date(view.booking_date),
-                BOOKING_TYPE_LABELS[view.booking_type],
-                view.leading_label,
-                view.second_label,
-                soll,
-                haben,
-                view.merchant,
-                view.booking_text,
-                _status_text(view),
+            is_debit = view.entry_side is Side.DEBIT
+            is_credit = view.entry_side is Side.CREDIT
+            amount_text = format_euro(view.amount_cents)
+            debit = (amount_text, view.amount_cents) if is_debit else ("", None)
+            credit = (amount_text, view.amount_cents) if is_credit else ("", None)
+            cells: list[tuple[str, object]] = [
+                (format_date(view.booking_date), view.booking_date.toordinal()),
+                (BOOKING_TYPE_LABELS[view.booking_type], AUTO),
+                (view.leading_label, AUTO),
+                (view.second_label, AUTO),
+                debit,
+                credit,
+                (view.merchant, AUTO),
+                (view.booking_text, AUTO),
+                (_status_text(view), AUTO),
             ]
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setData(Qt.ItemDataRole.UserRole, view.id)
+            for column, (text, sort_value) in enumerate(cells):
+                item = SortItem(text, sort_value=sort_value, row_id=view.id)
                 if column in (4, 5):
                     item.setTextAlignment(
                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -191,8 +185,8 @@ class BookingListDialog(QDialog):
                     item.setBackground(_CLOSED_BACKGROUND)
                     item.setForeground(_CLOSED_FOREGROUND)
                 self.table.setItem(row, column, item)
-            if view.id == keep:
-                self.table.selectRow(row)
+        self.data_table.apply()
+        self.data_table.select_id(keep)
         self._update_buttons()
 
     def _selected_view(self) -> BookingView | None:

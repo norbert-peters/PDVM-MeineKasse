@@ -14,6 +14,7 @@ from meine_kasse.infrastructure.database.repositories import (
     SqlOpeningBalanceRepository,
     SqlPlanRepository,
     SqlUserRepository,
+    SqlUserSettingRepository,
 )
 
 
@@ -21,6 +22,7 @@ class SqlAlchemyUnitOfWork:
     """Eine Transaktion. Ohne `commit()` wird beim Verlassen zurückgerollt."""
 
     users: SqlUserRepository
+    user_settings: SqlUserSettingRepository
     cost_centers: SqlCostCenterRepository
     accounts: SqlAccountRepository
     audit: SqlAuditRepository
@@ -38,6 +40,7 @@ class SqlAlchemyUnitOfWork:
         session = self._session_factory()
         self._session = session
         self.users = SqlUserRepository(session)
+        self.user_settings = SqlUserSettingRepository(session)
         self.cost_centers = SqlCostCenterRepository(session)
         self.accounts = SqlAccountRepository(session)
         self.audit = SqlAuditRepository(session)

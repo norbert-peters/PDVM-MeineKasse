@@ -7,6 +7,7 @@ from meine_kasse.application.services.user_service import UserService
 from meine_kasse.domain.errors import ValidationError
 from meine_kasse.presentation.dialogs.master_edit_dialog import MasterEditDialog
 from meine_kasse.presentation.dialogs.master_list_dialog import ListRow, MasterListDialog
+from meine_kasse.presentation.widgets.data_table import TablePreferences
 
 
 def _password_edit() -> QLineEdit:
@@ -123,8 +124,15 @@ class UserListDialog(MasterListDialog):
         users: UserService,
         actor_id: str,
         parent: QWidget | None = None,
+        *,
+        preferences: TablePreferences | None = None,
     ) -> None:
-        super().__init__("Anwender", ["Anmeldename", "Nachname", "Vorname", "Passwort"], parent)
+        super().__init__(
+            "Anwender",
+            ["Anmeldename", "Nachname", "Vorname", "Passwort"],
+            parent,
+            preferences=preferences,
+        )
         self._auth = auth
         self._users = users
         self._actor_id = actor_id

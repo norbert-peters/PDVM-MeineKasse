@@ -15,6 +15,7 @@ from meine_kasse.application.services.master_data_service import MasterDataServi
 from meine_kasse.application.services.opening_balance_service import OpeningBalanceService
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.application.services.user_service import UserService
+from meine_kasse.application.services.user_settings_service import UserSettingsService
 from meine_kasse.config import database_path, log_dir
 from meine_kasse.domain.enums import BookingType
 from meine_kasse.domain.errors import DomainError
@@ -27,6 +28,7 @@ from meine_kasse.presentation.dialogs.cost_center_dialogs import CostCenterListD
 from meine_kasse.presentation.dialogs.opening_balances_dialog import OpeningBalancesDialog
 from meine_kasse.presentation.dialogs.planning_dialog import PlanningDialog
 from meine_kasse.presentation.dialogs.user_dialogs import UserListDialog
+from meine_kasse.presentation.widgets.data_table import TablePreferences
 
 _PLANNED_TIP = "In Vorbereitung"
 
@@ -47,10 +49,14 @@ class MainWindow(QMainWindow):
         closing: ClosingService,
         opening_balances: OpeningBalanceService,
         backup: BackupService,
+        user_settings: UserSettingsService | None = None,
     ) -> None:
         super().__init__()
         self.logout_requested = False
         self._login = login
+        self._preferences = (
+            None if user_settings is None else TablePreferences(user_settings, login.user_id)
+        )
         self._auth = auth
         self._master_data = master_data
         self._users = users
@@ -120,13 +126,19 @@ class MainWindow(QMainWindow):
             menu.addAction(action)
 
     def _open_cost_centers(self) -> None:
-        CostCenterListDialog(self._master_data, self._login.user_id, self).exec()
+        CostCenterListDialog(
+            self._master_data, self._login.user_id, self, preferences=self._preferences
+        ).exec()
 
     def _open_accounts(self) -> None:
-        AccountListDialog(self._master_data, self._login.user_id, self).exec()
+        AccountListDialog(
+            self._master_data, self._login.user_id, self, preferences=self._preferences
+        ).exec()
 
     def _open_users(self) -> None:
-        UserListDialog(self._auth, self._users, self._login.user_id, self).exec()
+        UserListDialog(
+            self._auth, self._users, self._login.user_id, self, preferences=self._preferences
+        ).exec()
 
     def _open_planning(self) -> None:
         PlanningDialog(self._planning, self._booking_control, self._login.user_id, self).exec()
@@ -149,6 +161,7 @@ class MainWindow(QMainWindow):
             self._booking_control,
             self._login.user_id,
             self,
+            preferences=self._preferences,
         ).exec()
 
     def _new_booking(self) -> None:

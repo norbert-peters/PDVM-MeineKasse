@@ -1,6 +1,6 @@
 # Meine Kasse – Architekturvorgabe
 
-Version 2 – Grundlage: Dokument „PDVM Meine Kasse“ und Klarstellung zu Negativbeträgen.
+Version 3 – Grundlage: Dokument „PDVM Meine Kasse“, Klarstellung zu Negativbeträgen und [Testergebnisse 1](./ANALYSE_TESTERGEBNISSE_1.md). Die dort getroffenen Entscheidungen E1–E7 sind eingearbeitet (siehe Abschnitt 7).
 
 ## 1. Ziel und Geltungsbereich
 
@@ -15,8 +15,11 @@ Umfang des ersten Ausbaustands:
 - Soll-/Ist-Abgleich direkt bei jeder Buchung mit **Sperre bei Überschreitung des Ansatzes**
 - Ansatzumbuchungen zwischen Kostenstellen
 - Monats- und Jahresabschluss mit Signaturen
+- Rückstellungen je Kostenstelle mit maschineller Verteilung (2.12)
+- Internes Cash-Management (2.13)
+- Komfortfunktionen für Tabellen und Auswahlen, PDF-Ausgabe mit Dokumentenarchiv, Auswertungsdialog mit speicherbaren Auswertungen (2.14)
 
-Nicht Bestandteil: Auswertungen (folgen später), Fremdwährungen (nur €), Berechtigungsstufen, Bankanbindung.
+Nicht Bestandteil: Fremdwährungen (nur €), Berechtigungsstufen, Bankanbindung, mehrstufige Sortierung in Tabellen (Ausnahme: Gruppierung in Auswertungen).
 
 ## 2. Fachliche Festlegungen
 
@@ -73,7 +76,7 @@ Beispiele:
 | Soll/Haben getrennt führen | Die Ist-Werte führen Soll-Summe und Haben-Summe **getrennt und mit Vorzeichen**. Beide können negativ sein. Die echte Bewegung ist `Soll − Haben`. | festgelegt |
 | Haushaltsrestbetrag | `Jahresansatz − Ist-Bewegung (Soll − Haben)`. Negative Buchungen erhöhen den Restbetrag, Buchungen mit Haben-Seite ebenfalls. | festgelegt |
 | Monatsabgleich | Der Plan-Ansatz des Monats wird mit der Ist-Bewegung des Monats verglichen, jeweils vorzeichenrichtig. | festgelegt |
-| Rückstellung ist | Entsteht aus Buchungen auf Rückstellungsstellen/-konten nach derselben Vorzeichenlogik. | festgelegt |
+| Rückstellung ist | Wird je Kostenstelle und Planmonat aus der Ist-Bewegung und der Rückstellungsplanung berechnet (2.12). Es gibt keine Buchungen auf Rückstellungen. | festgelegt |
 | Storno/Korrektur | Eine Buchung wird durch eine **Minusbuchung auf derselben Seite** (gleiche Stellen, Betrag mit umgekehrtem Vorzeichen) korrigiert, verknüpft über `reversal_of_booking_id`. Das entspricht dem klassischen Rotstorno und verändert die Seite nicht. | festgelegt |
 | Vorzeichen von Planwerten | Planwerte (Jahresansatz, Monatsplan, Rückstellungsplan, Übertrag) werden in Soll-Richtung geführt, also mit **derselben Konvention** wie Ist-Werte. Der Jahresansatz ist immer ≥ 0. Plan und Ist sind damit ohne Umrechnung vergleichbar. | festgelegt |
 | Überschreitung | Eine Überschreitung des Jahresansatzes **sperrt** die Buchung (siehe 2.7). | festgelegt |
@@ -150,6 +153,8 @@ Regeln dazu:
 - Die empfangende Kostenstelle verteilt den erhaltenen Ansatz anschließend selbst in der Planung. Die abgebende Kostenstelle kann nur unverteilten Ansatz abgeben oder muss ihre Monatsplanung zuvor verringern.
 - Planänderungen sind nur in offenen Monaten möglich und werden im Audit-Protokoll festgehalten.
 - Die Signatur eines Monatsabschlusses umfasst auch die Ansatzumbuchungen und Monatsplanwerte des Monats.
+- Die Planungsart (`plan_mode`) entfällt als Bedienelement. Es gibt keine Quartalsverteilung mehr. „Gleichmäßig verteilen“ bleibt als Eingabehilfe, der Standardknopf des Planungsdialogs ist „Speichern“. Die Spalte `plan_mode` bleibt im Schema und in der Signatur unverändert erhalten (Rückwärtskompatibilität bestehender Abschlüsse), neue Werte sind immer `MONTHLY`.
+- Hat eine Kostenstelle keinen Ansatz, kann darauf nur gebucht werden, nachdem ihr per Ansatzumbuchung Ansatz bereitgestellt wurde (ergibt sich aus der Ansatzsperre, 2.7).
 
 Gegenüber „alles über Buchungen“ erzeugt dieser Weg keine Buchungen ohne fachlichen Wert für reine Umverteilungen. Gegenüber „alles in der Planung“ bleibt jede Änderung der Ansatzhöhe nachvollziehbar.
 
@@ -171,6 +176,108 @@ Der **Kontostand** ist der Anfangssaldo (Vortrag) plus die Bewegung (Haben − S
 | Kein Buchen davor | Auf ein Konto mit Vortrag kann nicht mit einem Buchungsdatum vor dem 01.01. des Vortragsjahres gebucht werden. |
 | Signatur | Im Januar-Abschluss gehen die Anfangssalden des Jahres in die Signatur ein. Ohne Anfangssalden bleibt die Signatur unverändert. |
 | Kontrollsumme | Die Kontrollsumme Konten gegen Kostenstellen (2.2) betrifft nur Bewegungen, Anfangssalden beeinflussen sie nicht. |
+
+### 2.11 Zwei Zeitachsen: Buchungsperiode und Planperiode
+
+Jede Buchung hat zwei Daten mit getrennter Aufgabe:
+
+| Datum | Bestimmt | Gilt für |
+| --- | --- | --- |
+| Buchungsdatum (`booking_date`) → **Buchungsperiode** (`fiscal_year`, `fiscal_month`) | Abschluss, Signatur, Buchbarkeit (2.5), Kontenbewegung | Konten, Abschlüsse |
+| Entstehungsdatum (`origin_date`) → **Planperiode** | Planmonat und Planjahr der Plan-Ist-Fortschreibung, Ansatzsperre, Rückstellung | Kostenstellen (`monthly_actuals`) |
+
+Regeln:
+
+1. Die Ist-Werte einer Kostenstelle werden im Monat des **Entstehungsdatums** fortgeschrieben, nicht im Monat des Buchungsdatums.
+2. Die Buchbarkeit nach 2.5 gilt für das Buchungsdatum. Der Planmonat darf bereits abgeschlossen sein, solange das **Planjahr** nicht abgeschlossen ist. Die Monatssignatur bleibt unberührt, weil sie über die Buchungsperiode gebildet wird.
+3. Liegt das Entstehungsdatum im **Vorjahr** (allgemein: in einem anderen Planjahr als dem laufenden), wird dort gebucht, wenn für die Kostenstelle in diesem Jahr ein Plan existiert und das Jahr nicht abgeschlossen ist. Andernfalls wird **nicht gebucht**; der Anwender erhält einen Hinweis mit Kostenstelle, Planjahr und Grund (kein Plan vorhanden / Jahr abgeschlossen).
+4. Ein Storno übernimmt das Entstehungsdatum der Ursprungsbuchung, damit er im selben Planmonat ausgleicht. Ist dieses Planjahr abgeschlossen, wird das Datum des Storno als Entstehungsdatum verwendet.
+5. Bei einer Änderung des Entstehungsdatums werden alter und neuer Planmonat in einer Transaktion fortgeschrieben.
+6. Der Neuaufbau der Plan-Ist-Werte (`rebuild_projections`) und die Abschlussprüfung verwenden die Planperiode.
+
+### 2.12 Rückstellungen
+
+Eine Rückstellung ist je Kostenstelle ein **virtuelles Rückstellungskonto**. Es ist kein Datensatz in `accounts` und fließt nicht in Kontosalden oder Kontrollsumme ein. Es wird aus Plan und Ist berechnet und kann nicht direkt bebucht werden.
+
+Begriffe (aus Sicht der Rückstellung; Soll = Bildung, Haben = Entlastung, Bestand = Soll − Haben):
+
+| Begriff | Bedeutung |
+| --- | --- |
+| Zuführung (Rückstellung Soll, Plan) | je Monat gebildete Rückstellung (`reserve_plan_cents`) |
+| Planentlastung (Rückstellung Haben, Plan) | die direkt geplanten Zahlungen (`plan_cents`) im Zahlungsmonat entlasten die Rückstellung |
+| Entlastung ist (Rückstellung Haben, Ist) | tatsächlich durch Ist-Buchungen entlasteter Betrag (`reserve_actual_cents`) |
+| Vortrag | Bestand zum Jahresende, wird als Anfangsbestand in das Folgejahr übernommen |
+
+Regeln:
+
+1. **Direkte Planung:** Ein Ansatz wird im Monat der voraussichtlichen Zahlung geplant. Ist in allen zwölf Monaten ein Planwert vorhanden, entstehen keine Rückstellungen.
+2. **Maschinelle Verteilung:** Ist nicht jeder Monat belegt, wird der Jahresansatz gleichmäßig auf die Monate als Zuführung verteilt (Rundungsrest an die ersten Monate). Danach wird je Zahlungsmonat geprüft, ob Vortrag plus Zuführungen bis einschließlich dieses Monats die Planentlastung decken. Fehlt Deckung, werden die Zuführungen der **offenen** Monate bis zum Zahlungsmonat **erhöht, nie erniedrigt**; ein positiver Bestand wird fortgeführt. Die Summe der Zuführungen übersteigt dadurch den Jahresansatz nicht. Reicht auch das nicht, erscheint ein Hinweis im Planungsdialog.
+3. **Manuelle Anpassung:** Verteilte Zuführungen sind je Monat änderbar. Manuell geänderte Monate sind gekennzeichnet (`reserve_is_manual`) und werden von einer Neuberechnung nicht überschrieben. Abgeschlossene Monate werden nie verändert.
+4. **Keine negativen Rückstellungen:** Der Bestand ist nie kleiner als 0. Es wird nicht gegen künftige Zuführungen entlastet.
+5. **Entlastung bei Buchung:** Eine Ist-Bewegung der Kostenstelle entlastet die Rückstellung nur bis zum Buchungszeitpunkt verfügbaren Bestand (Vortrag + Zuführungen bis einschließlich Planmonat − bisherige Entlastungen). Ist der Bestand zu gering, erscheint ein Hinweis; die Buchung wird dennoch ausgeführt.
+6. **Berechnung nach Monatssummen:** Die Entlastung wird je Planmonat aus der Monatssumme der Ist-Bewegung berechnet, nicht aus der Reihenfolge einzelner Buchungen. Damit ist sie jederzeit aus den Buchungen neu aufbaubar (Entwicklungsregel 3.11). Eine negative Monatsbewegung (Erstattung) gibt Entlastung höchstens bis zur bisherigen Entlastung zurück.
+7. **Ansatzsperre:** Unverändert (2.7). Die Rückstellung unterteilt den Jahresansatz und erweitert ihn nicht. Zuführung und Planentlastung sind Planung und berühren Ist, Haushaltsrest und Konten nicht.
+8. **Jahreswechsel:** Der nicht ausgeglichene Bestand wird als Vortrag übernommen. Bis zum Jahresabschluss wird er aus dem Vorjahr abgeleitet, mit dem Jahresabschluss festgeschrieben (Bestandteil der Jahressignatur). Der Vortrag ist nicht mehr manuell editierbar.
+9. **Reale Deckung:** Das Geld für Rückstellungen wird manuell per Konto → Konto-Buchung auf das Betriebsmittelkonto bewegt (2.13). Das System bucht dies nicht automatisch.
+
+### 2.13 Cash-Management
+
+Der Dialog zeigt je Monat bis einschließlich des aktuellen Buchungsmonats folgende Werte:
+
+| Block | Inhalt |
+| --- | --- |
+| Kontosalden | berechneter Kontostand je Konto (Anfangssaldo + Bewegung) und ergänzend der Rückstellungsbestand |
+| Kontenabgleich | manuell eingetragener erwarteter Kontostand (z. B. laut Kontoauszug), berechneter Kontostand und Differenz; die Differenz erscheint sofort beim Öffnen |
+| Zahlungskonto | Saldo des zentralen Zahlungskontos abzüglich noch offener Planausgaben = verfügbarer Rest (Cash), in zwei Spalten: offen im aktuellen Monat und offen bis Jahresende |
+| Betriebsmittel | Saldo des Betriebsmittelkontos, Bewegung im laufenden Jahr, Planbetrag, Rückstellungen Soll/Haben bis zum laufenden Monat und Differenz |
+
+Regeln:
+
+1. Ein Konto trägt höchstens eine Rolle (`cash_role`: `NONE`, `CENTRAL_PAYMENT`, `OPERATING_FUNDS`). Je Rolle gibt es höchstens ein Konto.
+2. Der erwartete Kontostand wird je Konto und Monat gespeichert. Fehlt ein Eintrag, gilt der letzte frühere Eintrag, bis er geändert wird. Änderungen werden im Audit-Protokoll festgehalten.
+3. Die Differenz Betriebsmittelsaldo ↔ Rückstellungsbestand ist eine Kontrollgröße, keine Sperre.
+4. Der Dialog ist lesend; nur der erwartete Kontostand ist editierbar.
+
+### 2.14 Bedienung, Tabellen, Ausgabe und Auswertungen
+
+**Eingaben**
+
+1. Buchungsdatum: Standardvorgabe ist das zuletzt verwendete Buchungsdatum; liegt es nicht im Buchungsmonat, der 1. des Buchungsmonats. Das Eingabefeld akzeptiert einen **Tag** (ergibt Datum im Buchungsmonat) oder ein vollständiges Datum.
+2. Entstehungsdatum: Tag oder vollständiges Datum, Standard im Buchungsmonat. Wird der Tag übergangen, ist das Datum frei änderbar.
+3. Alle Auswahllisten (Kostenstelle, Konto, Anwender) sind per Texteingabe filterbar; Filter wirkt auf Teilstrings in Name und Nummer, nicht nur auf den Anfang.
+4. Standardschaltflächen und Rückfragen sind deutsch (Ja/Nein/Abbrechen/OK).
+
+**Tabellen**
+
+1. Jede Spalte hat ein Suchfeld, das die Anzeige einschränkt, und ist auf- und absteigend sortierbar (einstufig). Sortierung nach Rohwerten (Cent, Datum), nie nach Anzeigetext.
+2. Sortierung wird je Anwender und Tabelle gespeichert (`user_settings`, Spalte über ihre Überschrift identifiziert). Spaltenfilter gelten nur für die geöffnete Ansicht; gespeicherte Filter gehören zu den Auswertungen. Die Buchungsliste bietet Filter nach Konto und Kostenstelle zusätzlich zum Monat.
+3. Der Inhalt einer Tabelle kann „wie dargestellt (gefiltert, sortiert)“ als PDF ausgegeben werden. Die Tabellenkomponente liefert dafür die angezeigten Zeilen in Anzeigereihenfolge.
+4. Reine Eingabetabellen (Monatsraster der Planung und des Abschlusses, Kontenanfangssalden) verwenden die Komponente nicht, weil Sortierung und Filter dort die Zeilenzuordnung der Eingabe stören würden.
+
+**PDF und Dokumentenarchiv**
+
+1. Die PDF-Datei wird unter `%LOCALAPPDATA%\MeineKasse\Dokumente` abgelegt. Dateiname: maschineller Teil (Zeitstempel, Tabellenname) plus manueller Zusatz (höchstens 40 Zeichen, unzulässige Dateizeichen werden entfernt).
+2. Jede erzeugte Datei wird in `documents` registriert (Name, Art, Ersteller, Zeitpunkt, Größe, SHA-256). Das Dokumentenarchiv ist aus der Anwendung erreichbar, durchsuch- und sortierbar; Anzeige und Druck erfolgen im PDF-Programm des Systems.
+3. Die PDF-Erzeugung läuft über einen Port der Anwendungsschicht, die Umsetzung liegt in der Infrastruktur (austauschbar).
+4. Die Datensicherung enthält Datenbank **und** Dokumentenverzeichnis.
+
+**Auswertungen**
+
+0. **Grundsatz:** Es gibt **eine** allgemeine Auswertung über Datenquellen und einen erweiterbaren Spaltenkatalog statt vieler Einzelberichte. Fachfragen werden durch Spaltenwahl, Filter, Gruppierung und gespeicherte Auswertungen beantwortet. Eine **Spezialfunktion** (eigener Dialog mit eigener Logik) entsteht nur, wenn die Antwort Berechnungen erfordert, die keine Spalte einer Datenquelle sind (z. B. Cash-Management, Abschlussprüfung). Der Spaltenkatalog startet mit den in 2.14 genannten Spalten und wächst nach Bedarf; eine neue Spalte ist eine Katalogzeile, kein neuer Bericht.
+1. Eine Auswertung arbeitet auf einer **Datenquelle** mit fester Zeilenbedeutung. Spalten gehören zu genau einer Datenquelle:
+
+| Datenquelle | Zeile | Beispielspalten |
+| --- | --- | --- |
+| Buchungen | Buchung | Buchungs-/Entstehungsdatum, Kostenstelle, Konto, Gegenkonto, Buchungsart, Soll, Haben, Text, Händler, Status (offen/abgeschlossen, Storno), Anwender |
+| Plan/Ist | Kostenstelle × Planmonat | Kostenstelle, Soll, Haben, Ist-Bewegung, Monatsplan, Abweichung, Ansatz, Restansatz, Zuführung, Entlastung, Rückstellungsbestand |
+| Konten | Konto | Konto, Art, Anfangssaldo, Soll, Haben, Saldo, erwarteter Kontostand, Differenz |
+
+2. Jede Spalte ist `ADDITIVE` (summierbar: Soll, Haben, Bewegung, Monatsplan, Zuführung, Entlastung) oder `NON_ADDITIVE` (Bestands- und Jahreswerte: Ansatz, Restansatz, Rückstellungsbestand, Saldo). Gesamt- und Gruppensummen summieren nur `ADDITIVE`-Spalten; bei `NON_ADDITIVE` wird je Gruppe der Wert der letzten Zeile bzw. nichts ausgewiesen.
+3. Spalten sind frei ein- und ausblendbar. Eine Auswertung speichert Name, Datenquelle, Spaltenauswahl und -reihenfolge, Filter, Sortierung und Gruppierung je Anwender (`report_definitions`).
+4. Filter sind strukturierte Bedingungen (Spalte, Operator, Wert, UND-verknüpft) aus einer festen Liste je Datenquelle. Freies SQL ist verboten.
+5. Gruppierung: mehrere Ebenen mit Zwischensummen; je Gruppenebene ist wählbar, ob nur Summen oder alle Daten ausgegeben werden.
+6. Gesamtsummen stehen immer in einer Zeile im Kopf der Auswertung.
+7. Die Druckausgabe erfolgt als PDF ins Dokumentenarchiv.
 
 ## 3. Systemarchitektur
 
@@ -200,6 +307,8 @@ Zentraler Datenzugriff (SQLite)
 | Passwort | Argon2id (`argon2-cffi`), nur Hash wird gespeichert |
 | Tests | pytest |
 | Auslieferung | PyInstaller |
+| PDF | `reportlab` hinter einem Port der Anwendungsschicht |
+| Übersetzung | Qt-Übersetzungsdateien (`qtbase_de`) für Standardschaltflächen; sie sind in das Paket aufzunehmen |
 
 ### 3.2 Schichten
 
@@ -217,12 +326,13 @@ Zentraler Datenzugriff (SQLite)
 ```text
 Meine Kasse/
   src/meine_kasse/
-    application/
-    domain/
+    application/ (services, reporting, ports)
+    domain/ (services: reserve_rules, planning_rules, ...)
     infrastructure/
       database/ (models, repositories, migrations)
+      reporting/ (PDF-Renderer)
       security/
-    presentation/ (dialogs, view_models, widgets)
+    presentation/ (dialogs, view_models, widgets: FilterComboBox, DataTable, DayDateEdit)
     bootstrap.py
     main.py
   tests/ (unit, integration)
@@ -245,13 +355,17 @@ Meine Kasse/
 | --- | --- |
 | `users` | id, name, last_name, first_name, address, password_hash, initial_password_hash, must_change_password, password_changed_at |
 | `cost_centers` | id, name, number, valid_from, kind (`STANDARD` / `WITHOUT_PLAN`), notes |
-| `accounts` | id, name, number, account_type (`CHECKING`, `SAVINGS`, `INVESTMENT`, `RESERVE`), bank_name, owner_name, iban |
+| `accounts` | id, name, number, account_type (`CHECKING`, `SAVINGS`, `INVESTMENT`, `RESERVE`), bank_name, owner_name, iban, cash_role (`NONE`, `CENTRAL_PAYMENT`, `OPERATING_FUNDS`; je Rolle höchstens ein Konto) |
 | `booking_control` | id, is_active (genau ein aktiver Datensatz), planning_enabled, current_year, current_month, last_closed_year, last_closed_month |
 | `period_closures` | id, year, month, closed_on, signature |
 | `year_closures` | id, year, closed_on, signature |
 | `closure_reopenings` | id, name, kind (`MONTH`/`YEAR`), year, month, reopened_on, reopened_by_user_id, reason, previous_signature, previous_closed_on, previous_closed_by_user_id, signature_was_valid |
 | `account_opening_balances` | id, account_id (eindeutig), year, amount_cents (mit Vorzeichen); siehe 2.10 |
 | `audit_log` | id, name (Aktion), entity, entity_id, user_id, old_value, new_value; enthält nie Passwörter oder Hashes |
+| `user_settings` | id, name (Schlüssel, z. B. `booking_list.sort`), user_id, value_json; eindeutig je Anwender und Schlüssel |
+| `report_definitions` | id, name, user_id, data_source, columns_json, filters_json, sort_json, grouping_json; eindeutig je Anwender und Name |
+| `documents` | id, name, file_name, document_type, created_by_user_id, size_bytes, sha256 |
+| `account_balance_checks` | id, account_id, year, month, expected_cents (mit Vorzeichen); eindeutig je Konto und Monat; siehe 2.13 |
 
 Das erstmalige Passwort wird nur als Hash abgelegt. Es kann zurückgesetzt werden und erzwingt bei der ersten Anmeldung einen Wechsel.
 
@@ -273,11 +387,11 @@ Regeln:
 
 | Tabelle | Wesentliche Felder |
 | --- | --- |
-| `cost_center_plans` | id, name, cost_center_id, year, base_budget_cents (Basisansatz, ≥ 0, nach Aktivierung fix), budget_transfer_cents (Projektion aus `BUDGET_TRANSFER`), reserve_carry_in_cents, reserve_carry_out_cents |
-| `monthly_plans` | id, name, cost_center_plan_id, month, plan_cents, reserve_plan_cents, plan_mode (`MONTHLY`, `QUARTERLY`, `IRREGULAR`, `RESERVE`) |
-| `monthly_actuals` | id, name, cost_center_id, year, month, debit_cents, credit_cents, reserve_actual_cents |
+| `cost_center_plans` | id, name, cost_center_id, year, base_budget_cents (Basisansatz, ≥ 0, nach Aktivierung fix), budget_transfer_cents (Projektion aus `BUDGET_TRANSFER`), reserve_carry_in_cents, reserve_carry_out_cents (ab Version 3 abgeleitet bzw. mit Jahresabschluss festgeschrieben, nicht mehr manuell, siehe 2.12) |
+| `monthly_plans` | id, name, cost_center_plan_id, month, plan_cents, reserve_plan_cents (Zuführung), reserve_is_manual, plan_mode (nur noch `MONTHLY`, bleibt wegen der Signatur erhalten) |
+| `monthly_actuals` | id, name, cost_center_id, year, month, debit_cents, credit_cents, reserve_actual_cents (Entlastung ist) |
 
-`debit_cents` und `credit_cents` sind vorzeichenbehaftet und werden getrennt geführt. Die Ist-Bewegung ist `debit_cents − credit_cents`. `monthly_actuals` enthält ausschließlich Ist-Buchungen, nie Ansatzumbuchungen. Der wirksame Jahresansatz ist `base_budget_cents + budget_transfer_cents`; beides ist aus den Buchungen rekonstruierbar. Planung wird intern immer als Monatswerte gespeichert; Quartals- und unregelmäßige Planung sind Eingabehilfen.
+`debit_cents` und `credit_cents` sind vorzeichenbehaftet und werden getrennt geführt. Die Ist-Bewegung ist `debit_cents − credit_cents`. `year` und `month` von `monthly_actuals` bezeichnen die **Planperiode** (Entstehungsdatum, siehe 2.11). `monthly_actuals` enthält ausschließlich Ist-Buchungen, nie Ansatzumbuchungen. Der wirksame Jahresansatz ist `base_budget_cents + budget_transfer_cents`; beides ist aus den Buchungen rekonstruierbar. Planung wird intern immer als Monatswerte gespeichert.
 
 ## 5. Kernabläufe
 
@@ -292,10 +406,10 @@ Regeln:
 
 1. Kostenstelle gewählt: Haushaltsrestbetrag, Monatsplan und bisherige Rückstellung werden angezeigt.
 2. Konto gewählt: aktueller Kontostand wird angezeigt.
-3. Betrag wird in Soll **oder** Haben erfasst, Vorzeichen frei.
-4. Prüfung: Buchungszeitraum offen, Betrag ≠ 0, Buchungsart passend, Ansatzsperre (siehe 2.7). Bei Sperre wird die Ansatzumbuchung angeboten.
-5. In **einer Transaktion**: Buchung, Buchungsseiten, Plan-Ist-Fortschreibung bzw. Ansatzfortschreibung, Audit-Eintrag.
-6. Erfolg wird erst nach Commit gemeldet.
+3. Betrag wird in Soll **oder** Haben erfasst, Vorzeichen frei. Buchungs- und Entstehungsdatum werden als Tag oder vollständiges Datum erfasst (2.14).
+4. Prüfung: Buchungszeitraum offen, Betrag ≠ 0, Buchungsart passend, Planjahr des Entstehungsdatums vorhanden und offen (2.11), Ansatzsperre (siehe 2.7). Bei Sperre wird die Ansatzumbuchung angeboten.
+5. In **einer Transaktion**: Buchung, Buchungsseiten, Plan-Ist-Fortschreibung einschließlich Rückstellungsentlastung bzw. Ansatzfortschreibung, Audit-Eintrag.
+6. Erfolg wird erst nach Commit gemeldet. Reicht die Rückstellung nicht aus, wird ein Hinweis gezeigt (2.12).
 
 ### 5.3 Monatsabschluss
 
@@ -303,7 +417,7 @@ Regeln:
 2. Die Daten werden geprüft, das Abschlussdatum wird gesetzt und eine Signatur (SHA-256 über kanonisch serialisierte Buchungen des Monats, inklusive Vorzeichen und Seite) abgelegt.
 3. Der Monat ist danach unveränderbar. `last_closed_month` und `current_month` werden fortgeschrieben.
 
-Die Signatur macht nachträgliche Änderungen erkennbar; sie ersetzt keine rechtlich revisionssichere Archivierung.
+Die Signatur macht nachträgliche Änderungen erkennbar; sie ersetzt keine rechtlich revisionssichere Archivierung. Sie wird über die Buchungsperiode gebildet; Ist-Buchungen mit Entstehungsdatum in einem abgeschlossenen Planmonat (2.11) verändern sie nicht.
 
 ### 5.4 Wiedereröffnen eines Abschlusses
 
@@ -325,10 +439,16 @@ Ein Abschluss kann ausnahmsweise wiedereröffnet werden. Das ist ein eigener, do
 
 Bereits entschieden und bestätigt: Planwerte in Soll-Richtung mit Jahresansatz ≥ 0 (2.3), Monatsplan nur als Anzeige ohne Sperre (2.7), Trennung „Ansatzhöhe per Buchung, Verteilung in der Planung“ (2.8) und die Haushaltsreserve (2.9).
 
-Noch offen:
+Mit Version 3 festgelegt (Entscheidungen E1–E7, Details in [ANALYSE_TESTERGEBNISSE_1.md](./ANALYSE_TESTERGEBNISSE_1.md), Abschnitt 4):
 
-1. **Rückstellungen:** Bildung und Auflösung im Detail, insbesondere ihr Verhältnis zur Ansatzsperre.
-2. **Anfangssalden und Planübertrag:** manuell, per Abschluss oder beides.
-3. **Art „ohne Plan“:** führt nur Soll- und Haben-Summe; weitere Arten (z. B. „??“ im Ausgangsdokument) sind noch zu benennen.
-4. **Mehrbenutzerbetrieb:** SQLite eignet sich für lokale Einzelplatznutzung. Bei paralleler Nutzung mehrerer Anwender ist ein Datenbankwechsel einzuplanen.
-5. **Kostenstellenrechnung und Auswertungen:** Inhalte und Kennzahlen folgen.
+1. **Zwei Zeitachsen** (2.11): Plan-Ist nach Entstehungsdatum, Abschluss nach Buchungsdatum. Bei nicht buchbarem Planjahr erscheint ein Hinweisdialog je Buchung (E2).
+2. **Rückstellungen** (2.12): virtuelles Konto je Kostenstelle, Soll = Bildung, Haben = Entlastung (E1), gesamter Jahresansatz wird verteilt (E6), Berechnung nach Monatssummen.
+3. **Cash-Management** (2.13): erwarteter Kontostand je Konto und Monat (E3), geplante Ausgaben in zwei Spalten (E4).
+4. **Auswertungen** (2.14): Datenquellen und Summierbarkeit von Spalten; PDF mit `reportlab` (E7).
+5. **Kostenstellenart „ohne Plan“** bleibt bestehen (E5). Sie dient Konten bzw. Kostenstellen, die nicht von vornherein planbar sind, z. B. durchlaufende Posten.
+
+Noch offen aus früheren Versionen:
+
+1. **Planübertrag des Ansatzes:** Kontoanfangssalden sind in 2.10 geregelt, der Rückstellungsvortrag in 2.12. Offen bleibt der Planübertrag des Ansatzes.
+2. **Weitere Kostenstellenarten:** neben `STANDARD` und `WITHOUT_PLAN` (Durchlaufposten u. Ä.) sind keine weiteren Arten vorgesehen; Bedarf wird bei Auftreten benannt.
+3. **Mehrbenutzerbetrieb:** SQLite eignet sich für lokale Einzelplatznutzung. Bei paralleler Nutzung mehrerer Anwender ist ein Datenbankwechsel einzuplanen.

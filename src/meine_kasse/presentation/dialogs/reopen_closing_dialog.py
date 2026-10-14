@@ -1,6 +1,5 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -8,8 +7,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -19,6 +16,7 @@ from meine_kasse.domain.enums import ClosureKind
 from meine_kasse.domain.services.closing_rules import MIN_REASON_LENGTH, ClosureRef
 from meine_kasse.presentation.dialogs.master_edit_dialog import MasterEditDialog
 from meine_kasse.presentation.labels import format_date
+from meine_kasse.presentation.widgets.data_table import DataTable, SortItem, TablePreferences
 
 
 class ReopenClosingDialog(MasterEditDialog):
@@ -76,15 +74,19 @@ class ReopeningHistoryDialog(QDialog):
         "Signatur zuvor gültig",
     ]
 
-    def __init__(self, closing: ClosingService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        closing: ClosingService,
+        parent: QWidget | None = None,
+        *,
+        preferences: TablePreferences | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Wiedereröffnungen")
         self.resize(980, 420)
 
-        self.table = QTableWidget(0, len(self._HEADERS))
-        self.table.setHorizontalHeaderLabels(self._HEADERS)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.data_table = DataTable(self._HEADERS, table_key="reopenings", preferences=preferences)
+        self.table = self.data_table.table
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         info = QLabel(
@@ -100,7 +102,7 @@ class ReopeningHistoryDialog(QDialog):
         buttons.addStretch()
         buttons.addWidget(close_button)
         layout = QVBoxLayout(self)
-        layout.addWidget(self.table)
+        layout.addWidget(self.data_table)
         layout.addWidget(info)
         layout.addLayout(buttons)
 
@@ -116,4 +118,5 @@ class ReopeningHistoryDialog(QDialog):
                 "Ja" if entry.signature_was_valid else "Nein",
             ]
             for column, value in enumerate(values):
-                self.table.setItem(row, column, QTableWidgetItem(value))
+                self.table.setItem(row, column, SortItem(value))
+        self.data_table.apply()

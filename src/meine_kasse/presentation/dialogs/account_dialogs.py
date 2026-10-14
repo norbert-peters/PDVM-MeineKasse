@@ -7,6 +7,7 @@ from meine_kasse.domain.enums import AccountType
 from meine_kasse.presentation.dialogs.master_edit_dialog import MasterEditDialog
 from meine_kasse.presentation.dialogs.master_list_dialog import ListRow, MasterListDialog
 from meine_kasse.presentation.labels import ACCOUNT_TYPE_LABELS, format_iban
+from meine_kasse.presentation.widgets.data_table import TablePreferences
 
 
 class AccountEditDialog(MasterEditDialog):
@@ -74,9 +75,19 @@ class AccountEditDialog(MasterEditDialog):
 
 class AccountListDialog(MasterListDialog):
     def __init__(
-        self, service: MasterDataService, actor_id: str, parent: QWidget | None = None
+        self,
+        service: MasterDataService,
+        actor_id: str,
+        parent: QWidget | None = None,
+        *,
+        preferences: TablePreferences | None = None,
     ) -> None:
-        super().__init__("Konten", ["Nummer", "Bezeichnung", "Kontoart", "Inhaber", "IBAN"], parent)
+        super().__init__(
+            "Konten",
+            ["Nummer", "Bezeichnung", "Kontoart", "Inhaber", "IBAN"],
+            parent,
+            preferences=preferences,
+        )
         self._service = service
         self._actor_id = actor_id
         self.refresh()

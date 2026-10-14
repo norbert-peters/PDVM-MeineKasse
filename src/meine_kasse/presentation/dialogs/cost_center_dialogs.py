@@ -16,6 +16,7 @@ from meine_kasse.domain.enums import CostCenterKind
 from meine_kasse.presentation.dialogs.master_edit_dialog import MasterEditDialog
 from meine_kasse.presentation.dialogs.master_list_dialog import ListRow, MasterListDialog
 from meine_kasse.presentation.labels import COST_CENTER_KIND_LABELS, format_date
+from meine_kasse.presentation.widgets.data_table import TablePreferences
 
 
 class CostCenterEditDialog(MasterEditDialog):
@@ -91,9 +92,16 @@ class CostCenterEditDialog(MasterEditDialog):
 
 class CostCenterListDialog(MasterListDialog):
     def __init__(
-        self, service: MasterDataService, actor_id: str, parent: QWidget | None = None
+        self,
+        service: MasterDataService,
+        actor_id: str,
+        parent: QWidget | None = None,
+        *,
+        preferences: TablePreferences | None = None,
     ) -> None:
-        super().__init__("Kostenstellen", ["Nummer", "Name", "Art", "Ab"], parent)
+        super().__init__(
+            "Kostenstellen", ["Nummer", "Name", "Art", "Ab"], parent, preferences=preferences
+        )
         self._service = service
         self._actor_id = actor_id
         self.refresh()

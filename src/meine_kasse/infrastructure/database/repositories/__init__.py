@@ -17,6 +17,9 @@ from meine_kasse.infrastructure.database.repositories.opening_balance_repository
 )
 from meine_kasse.infrastructure.database.repositories.plan_repository import SqlPlanRepository
 from meine_kasse.infrastructure.database.repositories.user_repository import SqlUserRepository
+from meine_kasse.infrastructure.database.repositories.user_setting_repository import (
+    SqlUserSettingRepository,
+)
 
 __all__ = [
     "SqlAccountRepository",
@@ -28,4 +31,5 @@ __all__ = [
     "SqlOpeningBalanceRepository",
     "SqlPlanRepository",
     "SqlUserRepository",
+    "SqlUserSettingRepository",
 ]

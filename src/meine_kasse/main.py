@@ -47,6 +47,7 @@ def run(app: QApplication, container: Container) -> int:
             closing=container.closing,
             opening_balances=container.opening_balances,
             backup=container.backup,
+            user_settings=container.user_settings,
         )
         window.show()
         app.exec()

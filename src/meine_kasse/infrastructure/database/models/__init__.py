@@ -17,6 +17,7 @@ from meine_kasse.infrastructure.database.models.plan import (
     MonthlyActualModel,
     MonthlyPlanModel,
 )
+from meine_kasse.infrastructure.database.models.user_setting import UserSettingModel
 
 __all__ = [
     "AccountModel",
@@ -32,5 +33,6 @@ __all__ = [
     "MonthlyPlanModel",
     "PeriodClosureModel",
     "UserModel",
+    "UserSettingModel",
     "YearClosureModel",
 ]

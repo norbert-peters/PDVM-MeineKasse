@@ -63,6 +63,9 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 13. Abgeschlossene Monate und Jahre sind in der Planung gesperrt. Ein unverändertes Speichern ist weiterhin möglich.
 14. Quartals- und gleichmäßige Verteilung sind Eingabehilfen. Gespeichert werden immer Monatswerte, die Art (Monatlich, Quartal, Unregelmäßig, Rückstellung) ist nur eine Kennzeichnung.
 15. Planänderungen werden mit den geänderten Feldern im Audit-Protokoll festgehalten.
+16. Die Ist-Fortschreibung einer Kostenstelle richtet sich nach dem Entstehungsdatum (Planperiode), Konten, Abschlüsse und Signatur nach dem Buchungsdatum. Das Planjahr muss existieren und offen sein, sonst wird nicht gebucht (Architekturvorgabe 2.11).
+17. Rückstellungen sind virtuell, werden in einer reinen Domain-Funktion aus Zuführungen, Vortrag und Monatssummen der Ist-Bewegung berechnet und sind nie negativ. Abgeschlossene Monate werden von der Berechnung nicht verändert.
+18. Die Planungsart wird nicht mehr bedient; `plan_mode` bleibt wegen der Signatur unverändert im Schema.
 
 ## 4a. Abschluss
 
@@ -97,6 +100,10 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 6. Offene und abgeschlossene Monate sind in Dialogen und Auswertungen erkennbar.
 7. Fehlermeldungen nennen die konkrete Ursache.
 8. Nach dem Login wird das Menü angezeigt.
+9. Standardschaltflächen und Rückfragen sind deutsch (Ja/Nein). Auswahllisten sind per Texteingabe filterbar; dafür wird das gemeinsame Widget verwendet, kein eigener Combobox-Code in Dialogen.
+10. Tabellen verwenden die gemeinsame Tabellenkomponente `DataTable` (Spaltenfilter, einstufige Sortierung nach Rohwerten, PDF-Ausgabe). Zellen sind `SortItem`; nach dem Füllen wird `apply()` aufgerufen. Die Sortierung wird je Anwender und Tabelle in `user_settings` gespeichert, nicht in `QSettings`. Eingabetabellen mit Zeilenbezug (Planung, Abschluss, Anfangssalden) sind ausgenommen.
+11. Auswertungen verwenden nur Spalten und Filter aus einer festen Liste je Datenquelle (kein freies SQL). Summen werden nur über `ADDITIVE`-Spalten gebildet.
+12. Erzeugte PDF-Dateien werden im Dokumentenarchiv registriert und von der Datensicherung erfasst. Dateinamen werden bereinigt (keine Pfadzeichen, höchstens 40 Zeichen manueller Zusatz).
 
 ## 7. Tests und Qualität
 
