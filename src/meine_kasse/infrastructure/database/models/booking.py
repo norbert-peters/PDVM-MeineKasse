@@ -34,6 +34,7 @@ class BookingModel(IdNameMixin, TimestampMixin, Base):
     fiscal_year: Mapped[int] = mapped_column(Integer)
     fiscal_month: Mapped[int] = mapped_column(Integer)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    transfer_id: Mapped[str | None] = mapped_column(String(36), index=True, default=None)
 
 
 class BookingLegModel(IdNameMixin, TimestampMixin, Base):

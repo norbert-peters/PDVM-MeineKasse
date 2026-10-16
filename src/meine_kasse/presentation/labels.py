@@ -6,9 +6,12 @@ from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind, I
 
 BOOKING_TYPE_LABELS = {
     BookingType.COST_CENTER_TO_ACCOUNT: "Kostenstelle → Konto",
-    BookingType.ACCOUNT_TO_ACCOUNT: "Konto → Konto (Umbuchung)",
+    BookingType.ACCOUNT_TO_ACCOUNT: "Konto → Konto (alt)",
     BookingType.BUDGET_TRANSFER: "Ansatz Kostenstelle → Ansatz Kostenstelle",
 }
+
+# Art-Anzeige in der Buchungsliste für die beiden Buchungssätze einer Umbuchung
+TRANSFER_LABEL = "Umbuchung (Kostenstelle → Konto)"
 
 # Beschriftung der führenden und der zweiten Stelle sowie Hinweis zur Wirkung von Soll/Haben
 BOOKING_TYPE_FIELDS = {
@@ -17,12 +20,6 @@ BOOKING_TYPE_FIELDS = {
         "Konto:",
         "Soll: Kostenstelle und Konto werden belastet (Ausgabe). "
         "Haben: Zufluss auf beide Stellen (z. B. Einnahme, Erstattung).",
-    ),
-    BookingType.ACCOUNT_TO_ACCOUNT: (
-        "Konto (führend):",
-        "Gegenkonto:",
-        "Soll: Das führende Konto wird belastet, das Gegenkonto erhält den Betrag. "
-        "Haben: umgekehrt.",
     ),
     BookingType.BUDGET_TRANSFER: (
         "Kostenstelle (führend):",

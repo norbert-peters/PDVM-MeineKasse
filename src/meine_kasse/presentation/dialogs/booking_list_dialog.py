@@ -26,7 +26,13 @@ from meine_kasse.domain.enums import BookingType, Side
 from meine_kasse.domain.errors import DomainError
 from meine_kasse.domain.value_objects.money import format_euro
 from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
-from meine_kasse.presentation.labels import BOOKING_TYPE_LABELS, MONTH_NAMES, format_date
+from meine_kasse.presentation.dialogs.transfer_dialog import TransferDialog
+from meine_kasse.presentation.labels import (
+    BOOKING_TYPE_LABELS,
+    MONTH_NAMES,
+    TRANSFER_LABEL,
+    format_date,
+)
 from meine_kasse.presentation.widgets.data_table import AUTO, DataTable, SortItem, TablePreferences
 
 _CLOSED_BACKGROUND = QBrush(QColor("#e6e6e6"))
@@ -109,6 +115,7 @@ class BookingListDialog(QDialog):
         self.table.itemDoubleClicked.connect(lambda _item: self._edit())
 
         self.new_button = self._button("&Neue Buchung…", self._new)
+        self.account_transfer_button = self._button("&Umbuchung…", self._new_account_transfer)
         self.transfer_button = self._button("&Ansatzumbuchung…", self._new_transfer)
         self.edit_button = self._button("&Bearbeiten…", self._edit)
         self.delete_button = self._button("&Löschen", self._delete)
@@ -118,6 +125,7 @@ class BookingListDialog(QDialog):
         buttons = QHBoxLayout()
         for button in (
             self.new_button,
+            self.account_transfer_button,
             self.transfer_button,
             self.edit_button,
             self.delete_button,
@@ -169,7 +177,10 @@ class BookingListDialog(QDialog):
             credit = (amount_text, view.amount_cents) if is_credit else ("", None)
             cells: list[tuple[str, object]] = [
                 (format_date(view.booking_date), view.booking_date.toordinal()),
-                (BOOKING_TYPE_LABELS[view.booking_type], AUTO),
+                (
+                    TRANSFER_LABEL if view.transfer_id else BOOKING_TYPE_LABELS[view.booking_type],
+                    AUTO,
+                ),
                 (view.leading_label, AUTO),
                 (view.second_label, AUTO),
                 debit,
@@ -210,6 +221,11 @@ class BookingListDialog(QDialog):
         if dialog.exec():
             self.refresh()
 
+    def _new_account_transfer(self) -> None:
+        dialog = TransferDialog(self._bookings, self._master_data, self._actor_id, parent=self)
+        if dialog.exec():
+            self.refresh()
+
     def _new_transfer(self) -> None:
         dialog = BookingDialog(
             self._bookings,
@@ -225,9 +241,15 @@ class BookingListDialog(QDialog):
         view = self._selected_view()
         if view is None or not view.can_edit:
             return
-        dialog = BookingDialog(
-            self._bookings, self._master_data, self._actor_id, view.id, parent=self
-        )
+        dialog: BookingDialog | TransferDialog
+        if view.transfer_id is not None:
+            dialog = TransferDialog(
+                self._bookings, self._master_data, self._actor_id, view.transfer_id, parent=self
+            )
+        else:
+            dialog = BookingDialog(
+                self._bookings, self._master_data, self._actor_id, view.id, parent=self
+            )
         if dialog.exec():
             self.refresh()
 
@@ -235,12 +257,13 @@ class BookingListDialog(QDialog):
         view = self._selected_view()
         if view is None:
             return
-        answer = QMessageBox.question(
-            self,
-            "Buchung löschen",
+        question = (
             f"Die Buchung vom {format_date(view.booking_date)} über "
-            f"{format_euro(view.amount_cents)} löschen?",
+            f"{format_euro(view.amount_cents)} löschen?"
         )
+        if view.transfer_id is not None:
+            question += "\nDer zugehörige zweite Buchungssatz der Umbuchung wird mitgelöscht."
+        answer = QMessageBox.question(self, "Buchung löschen", question)
         if answer == QMessageBox.StandardButton.Yes:
             self._run(lambda: self._bookings.delete(view.id, actor_id=self._actor_id))
 
@@ -248,12 +271,13 @@ class BookingListDialog(QDialog):
         view = self._selected_view()
         if view is None:
             return
-        answer = QMessageBox.question(
-            self,
-            "Buchung stornieren",
+        question = (
             "Die Buchung durch eine Minusbuchung auf derselben Seite stornieren?\n"
-            "Das Buchungsdatum ist das Standarddatum im aktuellen Buchungsmonat.",
+            "Das Buchungsdatum ist das Standarddatum im aktuellen Buchungsmonat."
         )
+        if view.transfer_id is not None:
+            question += "\nDer zugehörige zweite Buchungssatz der Umbuchung wird mitstorniert."
+        answer = QMessageBox.question(self, "Buchung stornieren", question)
         if answer == QMessageBox.StandardButton.Yes:
             booking_date = self._bookings.default_booking_date()
             self._run(

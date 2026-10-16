@@ -28,6 +28,8 @@ from meine_kasse.presentation.dialogs.booking_control_dialog import (  # noqa: E
 )
 from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog  # noqa: E402
 from meine_kasse.presentation.dialogs.booking_list_dialog import BookingListDialog  # noqa: E402
+from meine_kasse.presentation.dialogs.transfer_dialog import TransferDialog  # noqa: E402
+from meine_kasse.presentation.labels import TRANSFER_LABEL  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -94,7 +96,7 @@ def _choose(dialog: BookingDialog, leading: str, second: str) -> None:
     dialog.second_combo.setCurrentIndex(dialog.second_combo.findData(second))
 
 
-def _save(dialog: BookingDialog) -> None:
+def _save(dialog: BookingDialog | TransferDialog) -> None:
     dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).click()
 
 
@@ -195,16 +197,11 @@ def test_changing_the_booking_type_switches_labels_and_stellen(
     assert dialog.second_label.text() == "Konto:"
     assert dialog.leading_combo.count() == 2 and dialog.second_combo.count() == 2
 
-    dialog.type_combo.setCurrentIndex(dialog.type_combo.findData("ACCOUNT_TO_ACCOUNT"))
-    assert dialog.leading_label.text() == "Konto (führend):"
-    assert dialog.leading_combo.findData(ui_world.giro) >= 0
-    assert dialog.leading_combo.findData(ui_world.cc_a) < 0
-
-    dialog.soll_edit.setText("25,00")
-    _choose(dialog, ui_world.giro, ui_world.savings)
-    _save(dialog)
-    assert bookings.account_balance(ui_world.giro) == -2500
-    assert bookings.account_balance(ui_world.savings) == 2500
+    dialog.type_combo.setCurrentIndex(dialog.type_combo.findData("BUDGET_TRANSFER"))
+    assert dialog.leading_label.text() == "Kostenstelle (führend):"
+    assert dialog.leading_combo.findData(ui_world.cc_a) >= 0
+    assert dialog.leading_combo.findData(ui_world.giro) < 0
+    assert dialog.type_combo.findData("ACCOUNT_TO_ACCOUNT") < 0
 
 
 def test_dialog_shows_budget_remaining_and_account_balance(
@@ -571,6 +568,108 @@ def test_list_filters_by_month(
     listing.month_combo.setCurrentIndex(6)
     assert listing.table.rowCount() == 1
     assert _cells(listing, 0)[0] == "03.06.2026"
+
+
+# Umbuchung zwischen Konten mit Kostenstellen
+
+
+def _transfer_dialog(
+    bookings: BookingService,
+    master_data: MasterDataService,
+    world: UiWorld,
+    transfer_id: str | None = None,
+) -> TransferDialog:
+    return TransferDialog(bookings, master_data, world.actor, transfer_id)
+
+
+def _fill_transfer(dialog: TransferDialog, world: UiWorld, amount: str) -> None:
+    for combo, entity_id in (
+        (dialog.leading_account_combo, world.giro),
+        (dialog.leading_cost_center_combo, world.cc_a),
+        (dialog.transfer_account_combo, world.savings),
+        (dialog.transfer_cost_center_combo, world.cc_b),
+    ):
+        combo.setCurrentIndex(combo.findData(entity_id))
+    dialog.amount_edit.setText(amount)
+
+
+def test_transfer_dialog_books_two_bookings(
+    qapp: QApplication,
+    bookings: BookingService,
+    master_data: MasterDataService,
+    ui_world: UiWorld,
+) -> None:
+    dialog = _transfer_dialog(bookings, master_data, ui_world)
+    _fill_transfer(dialog, ui_world, "25,00")
+    assert "Kontostand" in dialog.leading_account_info.text()
+    _save(dialog)
+
+    views = bookings.list_bookings(year=2026)
+    assert [(v.entry_side, v.leading_label, v.second_label) for v in views] == [
+        (Side.DEBIT, "100 Lebensmittel", "1000 Girokonto"),
+        (Side.CREDIT, "200 Reisen", "2000 Sparkonto"),
+    ]
+    assert bookings.account_balance(ui_world.giro) == -2500
+    assert bookings.account_balance(ui_world.savings) == 2500
+
+
+def test_transfer_dialog_validates_input(
+    qapp: QApplication,
+    bookings: BookingService,
+    master_data: MasterDataService,
+    ui_world: UiWorld,
+) -> None:
+    dialog = _transfer_dialog(bookings, master_data, ui_world)
+    _fill_transfer(dialog, ui_world, "")
+    _save(dialog)
+    assert "Betrag" in dialog.error_label.text()
+
+    _fill_transfer(dialog, ui_world, "5,00")
+    dialog.transfer_account_combo.setCurrentIndex(
+        dialog.transfer_account_combo.findData(ui_world.giro)
+    )
+    _save(dialog)
+    assert "verschieden" in dialog.error_label.text()
+    assert bookings.list_bookings(year=2026) == []
+
+
+def test_list_edits_deletes_and_reverses_a_transfer_as_a_whole(
+    qapp: QApplication,
+    bookings: BookingService,
+    booking_control: BookingControlService,
+    master_data: MasterDataService,
+    ui_world: UiWorld,
+    confirm_yes: None,
+) -> None:
+    dialog = _transfer_dialog(bookings, master_data, ui_world)
+    _fill_transfer(dialog, ui_world, "25,00")
+    _save(dialog)
+    debit, credit = bookings.list_bookings(year=2026)
+    assert debit.transfer_id is not None and debit.transfer_id == credit.transfer_id
+    listing = _list(bookings, master_data, booking_control, ui_world)
+    assert _cells(listing, 0)[1] == TRANSFER_LABEL
+
+    editor = _transfer_dialog(bookings, master_data, ui_world, debit.transfer_id)
+    assert editor.amount_edit.text() == "25,00 €"
+    assert editor.leading_account_combo.currentData() == ui_world.giro
+    assert editor.transfer_cost_center_combo.currentData() == ui_world.cc_b
+    editor.amount_edit.setText("40,00")
+    _save(editor)
+    assert bookings.account_balance(ui_world.savings) == 4000
+
+    _select_id(listing, credit.id)
+    listing.reverse_button.click()
+    assert len(bookings.list_bookings(year=2026)) == 4
+    assert bookings.account_balance(ui_world.giro) == 0
+    assert bookings.account_balance(ui_world.savings) == 0
+
+    _select_id(listing, debit.id)
+    assert listing.edit_button.isEnabled() is False
+    reversal = next(v for v in bookings.list_bookings(year=2026) if v.is_reversal)
+    _select_id(listing, reversal.id)
+    listing.delete_button.click()
+    assert len(bookings.list_bookings(year=2026)) == 2
+    assert bookings.account_balance(ui_world.giro) == -4000
 
 
 # Buchungssteuerung

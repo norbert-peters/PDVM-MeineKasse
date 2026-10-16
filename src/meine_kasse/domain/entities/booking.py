@@ -32,3 +32,5 @@ class Booking:
     fiscal_month: int
     created_by_user_id: str
     legs: tuple[BookingLeg, BookingLeg]
+    # Gemeinsame GUID der beiden Buchungssätze einer Umbuchung, sonst leer
+    transfer_id: str | None = None

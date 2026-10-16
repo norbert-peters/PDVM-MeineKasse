@@ -36,6 +36,7 @@ from meine_kasse.domain.services.booking_rules import (
     build_legs,
     effects_of,
     validate_amount,
+    validate_transfer_accounts,
 )
 from meine_kasse.domain.services.budget_rules import (
     BudgetPosition,
@@ -106,11 +107,16 @@ class BookingView:
     is_reversal: bool
     is_reversed: bool
     is_plan_year_closed: bool = False
+    transfer_id: str | None = None
 
     @property
     def can_edit(self) -> bool:
         return not (
-            self.is_closed or self.is_plan_year_closed or self.is_reversal or self.is_reversed
+            self.is_closed
+            or self.is_plan_year_closed
+            or self.is_reversal
+            or self.is_reversed
+            or self.booking_type is BookingType.ACCOUNT_TO_ACCOUNT
         )
 
     @property
@@ -185,6 +191,11 @@ class BookingService:
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
             old = _get_booking(uow, booking_id)
+            if old.transfer_id is not None:
+                raise ValidationError(
+                    "Der Buchungssatz gehört zu einer Umbuchung. "
+                    "Bitte die Umbuchung als Ganzes bearbeiten."
+                )
             _ensure_open(uow, old)
             if old.reversal_of_id is not None:
                 raise ValidationError(
@@ -215,58 +226,183 @@ class BookingService:
             uow.audit.add(_audit("BOOKING_UPDATED", new, actor_id, old=old, new=new))
             uow.commit()
 
-    def delete(self, booking_id: str, *, actor_id: str) -> None:
-        """Löscht eine Buchung in einem offenen Monat und nimmt ihre Wirkung zurück."""
+    def post_transfer(
+        self,
+        *,
+        amount_cents: int,
+        booking_date: date,
+        origin_date: date,
+        leading_cost_center_id: str,
+        leading_account_id: str,
+        transfer_cost_center_id: str,
+        transfer_account_id: str,
+        merchant: str = "",
+        booking_text: str = "",
+        actor_id: str,
+    ) -> str:
+        """Bucht eine Umbuchung zwischen zwei Konten als zwei Buchungssätze.
+
+        Satz 1 belastet das führende Konto mit seiner Kostenstelle (Soll, Ausgabe), Satz 2
+        schreibt dem Umbuchungskonto mit seiner Kostenstelle den Betrag gut (Haben). Jede
+        Kontobewegung hat damit eine Kostenstelle als Gegenstelle. Rückgabe: GUID der Umbuchung.
+        """
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
-            old = _get_booking(uow, booking_id)
-            _ensure_open(uow, old)
-            if uow.bookings.has_reversal(booking_id):
-                raise ValidationError(
-                    "Die Buchung wurde storniert. Bitte zuerst den Storno löschen."
-                )
-            self._apply(uow, control, effects_of(old).negated())
-            uow.bookings.delete(booking_id)
-            uow.audit.add(_audit("BOOKING_DELETED", old, actor_id, old=old))
+            transfer_id = new_id()
+            debit, credit = self._build_transfer(
+                uow,
+                control,
+                booking_ids=(new_id(), new_id()),
+                transfer_id=transfer_id,
+                amount_cents=amount_cents,
+                booking_date=booking_date,
+                origin_date=origin_date,
+                leading_cost_center_id=leading_cost_center_id,
+                leading_account_id=leading_account_id,
+                transfer_cost_center_id=transfer_cost_center_id,
+                transfer_account_id=transfer_account_id,
+                merchant=merchant,
+                booking_text=booking_text,
+                created_by=actor_id,
+            )
+            self._apply(uow, control, _effects_of_all((debit, credit)))
+            for booking in (debit, credit):
+                uow.bookings.add(booking)
+                uow.audit.add(_audit("BOOKING_CREATED", booking, actor_id, new=booking))
+            uow.commit()
+            return transfer_id
+
+    def update_transfer(
+        self,
+        transfer_id: str,
+        *,
+        amount_cents: int,
+        booking_date: date,
+        origin_date: date,
+        leading_cost_center_id: str,
+        leading_account_id: str,
+        transfer_cost_center_id: str,
+        transfer_account_id: str,
+        merchant: str = "",
+        booking_text: str = "",
+        actor_id: str,
+    ) -> None:
+        """Ändert beide Buchungssätze einer Umbuchung gemeinsam."""
+        with self._uow_factory() as uow:
+            control = load_or_create_control(uow, self._today)
+            old_debit, old_credit = _get_transfer(uow, transfer_id)
+            for old in (old_debit, old_credit):
+                _ensure_open(uow, old)
+                if old.reversal_of_id is not None:
+                    raise ValidationError(
+                        "Ein Storno kann nicht geändert werden. Bitte löschen und neu buchen."
+                    )
+                if uow.bookings.has_reversal(old.id):
+                    raise ValidationError(
+                        "Die Umbuchung wurde storniert. Bitte zuerst den Storno löschen."
+                    )
+            debit, credit = self._build_transfer(
+                uow,
+                control,
+                booking_ids=(old_debit.id, old_credit.id),
+                transfer_id=transfer_id,
+                amount_cents=amount_cents,
+                booking_date=booking_date,
+                origin_date=origin_date,
+                leading_cost_center_id=leading_cost_center_id,
+                leading_account_id=leading_account_id,
+                transfer_cost_center_id=transfer_cost_center_id,
+                transfer_account_id=transfer_account_id,
+                merchant=merchant,
+                booking_text=booking_text,
+                created_by=old_debit.created_by_user_id,
+            )
+            self._apply(
+                uow,
+                control,
+                _effects_of_all((old_debit, old_credit))
+                .negated()
+                .combined(_effects_of_all((debit, credit))),
+            )
+            for old, new in ((old_debit, debit), (old_credit, credit)):
+                uow.bookings.update(new)
+                uow.audit.add(_audit("BOOKING_UPDATED", new, actor_id, old=old, new=new))
+            uow.commit()
+
+    def delete(self, booking_id: str, *, actor_id: str) -> None:
+        """Löscht eine Buchung in einem offenen Monat und nimmt ihre Wirkung zurück.
+
+        Gehört die Buchung zu einer Umbuchung, werden beide Buchungssätze gelöscht.
+        """
+        with self._uow_factory() as uow:
+            control = load_or_create_control(uow, self._today)
+            group = _group_of(uow, _get_booking(uow, booking_id))
+            for old in group:
+                _ensure_open(uow, old)
+                if uow.bookings.has_reversal(old.id):
+                    raise ValidationError(
+                        "Die Buchung wurde storniert. Bitte zuerst den Storno löschen."
+                    )
+            self._apply(uow, control, _effects_of_all(group).negated())
+            for old in group:
+                uow.bookings.delete(old.id)
+                uow.audit.add(_audit("BOOKING_DELETED", old, actor_id, old=old))
             uow.commit()
 
     def reverse(self, booking_id: str, *, booking_date: date, actor_id: str) -> str:
-        """Storniert durch Minusbuchung auf derselben Seite (kein Seitentausch)."""
+        """Storniert durch Minusbuchung auf derselben Seite (kein Seitentausch).
+
+        Gehört die Buchung zu einer Umbuchung, werden beide Buchungssätze storniert. Die
+        Stornos bilden wieder eine Umbuchung. Rückgabe: GUID des Storno zur gewählten Buchung.
+        """
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
-            original = _get_booking(uow, booking_id)
-            if original.reversal_of_id is not None:
-                raise ValidationError("Ein Storno kann nicht erneut storniert werden.")
-            if uow.bookings.has_reversal(booking_id):
-                raise ValidationError("Die Buchung wurde bereits storniert.")
-            text = f"Storno: {original.booking_text}".strip()
-            # Der Storno gleicht im selben Planmonat aus. Ist dessen Planjahr abgeschlossen,
-            # wirkt er im Jahr seines eigenen Datums.
-            origin_date = original.origin_date
-            if _plan_year_closed(original, uow.closures.closed_years()):
-                origin_date = booking_date
-            reversal = self._build(
-                uow,
-                control,
-                booking_id=new_id(),
-                booking_type=original.booking_type,
-                entry_side=original.entry_side,
-                amount_cents=-original.amount_cents,
-                booking_date=booking_date,
-                origin_date=origin_date,
-                leading=_stelle_of(original.legs[0]),
-                second=_stelle_of(original.legs[1]),
-                merchant=original.merchant,
-                booking_text=text,
-                created_by=actor_id,
-                reversal_of_id=original.id,
-                allow_inactive=True,
-            )
-            self._apply(uow, control, effects_of(reversal))
-            uow.bookings.add(reversal)
-            uow.audit.add(_audit("BOOKING_REVERSED", reversal, actor_id, new=reversal))
+            requested = _get_booking(uow, booking_id)
+            group = _group_of(uow, requested)
+            closed_years = uow.closures.closed_years()
+            reversal_transfer_id = new_id() if requested.transfer_id is not None else None
+            reversals: list[Booking] = []
+            for original in group:
+                if original.reversal_of_id is not None:
+                    raise ValidationError("Ein Storno kann nicht erneut storniert werden.")
+                if uow.bookings.has_reversal(original.id):
+                    raise ValidationError("Die Buchung wurde bereits storniert.")
+                text = f"Storno: {original.booking_text}".strip()
+                # Der Storno gleicht im selben Planmonat aus. Ist dessen Planjahr abgeschlossen,
+                # wirkt er im Jahr seines eigenen Datums.
+                origin_date = original.origin_date
+                if _plan_year_closed(original, closed_years):
+                    origin_date = booking_date
+                reversals.append(
+                    self._build(
+                        uow,
+                        control,
+                        booking_id=new_id(),
+                        booking_type=original.booking_type,
+                        entry_side=original.entry_side,
+                        amount_cents=-original.amount_cents,
+                        booking_date=booking_date,
+                        origin_date=origin_date,
+                        leading=_stelle_of(original.legs[0]),
+                        second=_stelle_of(original.legs[1]),
+                        merchant=original.merchant,
+                        booking_text=text,
+                        created_by=actor_id,
+                        reversal_of_id=original.id,
+                        allow_inactive=True,
+                        transfer_id=reversal_transfer_id,
+                    )
+                )
+            self._apply(uow, control, _effects_of_all(reversals))
+            for reversal in reversals:
+                uow.bookings.add(reversal)
+                uow.audit.add(_audit("BOOKING_REVERSED", reversal, actor_id, new=reversal))
             uow.commit()
-            return reversal.id
+            return next(
+                reversal.id
+                for original, reversal in zip(group, reversals, strict=True)
+                if original.id == requested.id
+            )
 
     def rebuild_projections(self, *, actor_id: str | None = None) -> None:
         """Baut Plan-Ist-Werte und Ansatzumbuchungen vollständig aus den Buchungen neu auf."""
@@ -333,6 +469,11 @@ class BookingService:
     def get_booking(self, booking_id: str) -> Booking:
         with self._uow_factory() as uow:
             return _get_booking(uow, booking_id)
+
+    def get_transfer(self, transfer_id: str) -> tuple[Booking, Booking]:
+        """Soll-Satz (führendes Konto) und Haben-Satz (Umbuchungskonto) einer Umbuchung."""
+        with self._uow_factory() as uow:
+            return _get_transfer(uow, transfer_id)
 
     def cost_center_info(self, cost_center_id: str, plan_date: date) -> CostCenterInfo:
         """Stand der Kostenstelle in der Planperiode des Entstehungsdatums.
@@ -460,6 +601,7 @@ class BookingService:
                         or (booking.fiscal_year, booking.fiscal_month) in closed_months,
                         is_reversal=booking.reversal_of_id is not None,
                         is_reversed=uow.bookings.has_reversal(booking.id),
+                        transfer_id=booking.transfer_id,
                         is_plan_year_closed=_plan_year_closed(booking, closed_years)
                         and not (
                             booking.fiscal_year in closed_years
@@ -489,8 +631,14 @@ class BookingService:
         created_by: str,
         reversal_of_id: str | None,
         allow_inactive: bool = False,
+        transfer_id: str | None = None,
     ) -> Booking:
         validate_amount(amount_cents)
+        if booking_type is BookingType.ACCOUNT_TO_ACCOUNT and reversal_of_id is None:
+            raise ValidationError(
+                "Konto → Konto kann nicht mehr gebucht werden. Eine Umbuchung braucht für "
+                "beide Konten eine Kostenstelle (Umbuchung mit Kostenstellen)."
+            )
         ensure_bookable(
             booking_date,
             current_year=control.current_year,
@@ -553,7 +701,55 @@ class BookingService:
                 _to_leg(first_leg.position, first_leg.side, leading),
                 _to_leg(second_leg.position, second_leg.side, second),
             ),
+            transfer_id=transfer_id,
         )
+
+    def _build_transfer(
+        self,
+        uow: UnitOfWork,
+        control: BookingControl,
+        *,
+        booking_ids: tuple[str, str],
+        transfer_id: str,
+        amount_cents: int,
+        booking_date: date,
+        origin_date: date,
+        leading_cost_center_id: str,
+        leading_account_id: str,
+        transfer_cost_center_id: str,
+        transfer_account_id: str,
+        merchant: str,
+        booking_text: str,
+        created_by: str,
+    ) -> tuple[Booking, Booking]:
+        validate_transfer_accounts(leading_account_id, transfer_account_id)
+        sides = (
+            (Side.DEBIT, leading_cost_center_id, leading_account_id),
+            (Side.CREDIT, transfer_cost_center_id, transfer_account_id),
+        )
+        debit, credit = (
+            self._build(
+                uow,
+                control,
+                booking_id=booking_id,
+                booking_type=BookingType.COST_CENTER_TO_ACCOUNT,
+                entry_side=side,
+                amount_cents=amount_cents,
+                booking_date=booking_date,
+                origin_date=origin_date,
+                leading=Stelle(ObjectKind.COST_CENTER, cost_center_id),
+                second=Stelle(ObjectKind.ACCOUNT, account_id),
+                merchant=merchant,
+                booking_text=booking_text,
+                created_by=created_by,
+                reversal_of_id=None,
+                transfer_id=transfer_id,
+            )
+            for booking_id, (side, cost_center_id, account_id) in zip(
+                booking_ids, sides, strict=True
+            )
+        )
+        return debit, credit
 
     def _apply(self, uow: UnitOfWork, control: BookingControl, effects: BookingEffects) -> None:
         """Prüft die Ansatzsperre und schreibt Ansatz und Ist-Summen fort."""
@@ -623,6 +819,28 @@ def _get_booking(uow: UnitOfWork, booking_id: str) -> Booking:
     if booking is None:
         raise NotFoundError("Die Buchung wurde nicht gefunden.")
     return booking
+
+
+def _get_transfer(uow: UnitOfWork, transfer_id: str) -> tuple[Booking, Booking]:
+    members = uow.bookings.list_by_transfer(transfer_id)
+    if len(members) != 2:
+        raise NotFoundError("Die Umbuchung wurde nicht gefunden.")
+    return members[0], members[1]
+
+
+def _group_of(uow: UnitOfWork, booking: Booking) -> tuple[Booking, ...]:
+    """Die Buchung allein oder beide Buchungssätze ihrer Umbuchung."""
+    if booking.transfer_id is None:
+        return (booking,)
+    return _get_transfer(uow, booking.transfer_id)
+
+
+def _effects_of_all(bookings: Sequence[Booking]) -> BookingEffects:
+    """Gemeinsame Wirkung mehrerer Buchungen; Soll und Haben einer Kostenstelle heben sich auf."""
+    total = BookingEffects()
+    for booking in bookings:
+        total = total.combined(effects_of(booking))
+    return total
 
 
 def _get_cost_center(uow: UnitOfWork, cost_center_id: str) -> CostCenter:
@@ -697,15 +915,15 @@ def _stelle_of(leg: BookingLeg) -> Stelle:
 
 
 def _summary(booking: Booking) -> str:
-    return json.dumps(
-        {
-            "booking_date": booking.booking_date.isoformat(),
-            "booking_type": booking.booking_type.value,
-            "entry_side": booking.entry_side.value,
-            "amount": format_euro(booking.amount_cents),
-        },
-        ensure_ascii=False,
-    )
+    summary = {
+        "booking_date": booking.booking_date.isoformat(),
+        "booking_type": booking.booking_type.value,
+        "entry_side": booking.entry_side.value,
+        "amount": format_euro(booking.amount_cents),
+    }
+    if booking.transfer_id is not None:
+        summary["transfer_id"] = booking.transfer_id
+    return json.dumps(summary, ensure_ascii=False)
 
 
 def _audit(

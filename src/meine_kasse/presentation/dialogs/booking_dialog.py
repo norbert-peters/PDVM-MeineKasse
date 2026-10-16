@@ -26,7 +26,6 @@ from meine_kasse.presentation.labels import BOOKING_TYPE_FIELDS, BOOKING_TYPE_LA
 
 _KINDS = {
     BookingType.COST_CENTER_TO_ACCOUNT: (ObjectKind.COST_CENTER, ObjectKind.ACCOUNT),
-    BookingType.ACCOUNT_TO_ACCOUNT: (ObjectKind.ACCOUNT, ObjectKind.ACCOUNT),
     BookingType.BUDGET_TRANSFER: (ObjectKind.COST_CENTER, ObjectKind.COST_CENTER),
 }
 _GOOD = "color: #1b6e2d;"
@@ -94,7 +93,8 @@ class BookingDialog(MasterEditDialog):
         default_date = bookings.default_booking_date()
         self.type_combo = QComboBox()
         for booking_type, label in BOOKING_TYPE_LABELS.items():
-            self.type_combo.addItem(label, booking_type.value)
+            if booking_type in _KINDS:
+                self.type_combo.addItem(label, booking_type.value)
         self.booking_date_edit = _date_edit(default_date)
         self.origin_date_edit = _date_edit(default_date)
         self.period_label = QLabel()

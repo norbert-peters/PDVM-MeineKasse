@@ -36,6 +36,7 @@ def _to_entity(model: BookingModel, legs: Sequence[BookingLegModel]) -> Booking:
         fiscal_month=model.fiscal_month,
         created_by_user_id=model.created_by_user_id,
         legs=(first, second),
+        transfer_id=model.transfer_id,
     )
 
 
@@ -72,6 +73,7 @@ class SqlBookingRepository:
                 fiscal_year=booking.fiscal_year,
                 fiscal_month=booking.fiscal_month,
                 created_by_user_id=booking.created_by_user_id,
+                transfer_id=booking.transfer_id,
             )
         )
         self._session.flush()
@@ -116,6 +118,23 @@ class SqlBookingRepository:
             select(BookingLegModel).where(BookingLegModel.booking_id == booking_id)
         ).all()
         return _to_entity(model, legs)
+
+    def list_by_transfer(self, transfer_id: str) -> Sequence[Booking]:
+        """Die Buchungssätze einer Umbuchung, der Soll-Satz (Ausgabe) zuerst."""
+        models = self._session.scalars(
+            select(BookingModel)
+            .where(BookingModel.transfer_id == transfer_id)
+            .order_by(BookingModel.entry_side.desc(), BookingModel.created_at, BookingModel.id)
+        ).all()
+        if not models:
+            return []
+        legs_by_booking: dict[str, list[BookingLegModel]] = defaultdict(list)
+        leg_statement = select(BookingLegModel).where(
+            BookingLegModel.booking_id.in_([model.id for model in models])
+        )
+        for leg in self._session.scalars(leg_statement):
+            legs_by_booking[leg.booking_id].append(leg)
+        return [_to_entity(model, legs_by_booking[model.id]) for model in models]
 
     def has_reversal(self, booking_id: str) -> bool:
         statement = select(func.count()).where(BookingModel.reversal_of_id == booking_id)

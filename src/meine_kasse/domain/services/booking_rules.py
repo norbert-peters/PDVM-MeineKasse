@@ -40,6 +40,12 @@ def validate_amount(amount_cents: int) -> None:
         raise ValidationError("Der Betrag darf nicht 0 sein.")
 
 
+def validate_transfer_accounts(leading_account_id: str, transfer_account_id: str) -> None:
+    """Eine Umbuchung braucht zwei verschiedene Konten."""
+    if leading_account_id == transfer_account_id:
+        raise ValidationError("Führendes Konto und Umbuchungskonto müssen verschieden sein.")
+
+
 def opposite(side: Side) -> Side:
     return Side.CREDIT if side is Side.DEBIT else Side.DEBIT
 

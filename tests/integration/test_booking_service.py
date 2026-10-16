@@ -600,14 +600,14 @@ def test_control_sum_of_accounts_equals_cost_center_movement(
     book(bookings, world, side=Side.DEBIT, amount=-1200, cost_center=world.cc_b)
     book(bookings, world, side=Side.CREDIT, amount=3000, account=world.savings)
     book(bookings, world, side=Side.CREDIT, amount=-700, cost_center=world.cc_free)
-    bookings.post(
-        booking_type=BookingType.ACCOUNT_TO_ACCOUNT,
-        entry_side=Side.DEBIT,
+    bookings.post_transfer(
         amount_cents=2500,
         booking_date=D,
         origin_date=D,
-        leading=acc(world.giro),
-        second=acc(world.savings),
+        leading_cost_center_id=world.cc_a,
+        leading_account_id=world.giro,
+        transfer_cost_center_id=world.cc_b,
+        transfer_account_id=world.savings,
         actor_id=world.actor,
     )
 

@@ -18,7 +18,7 @@ Umgesetzt (erste Schritte):
 - Anlage, Änderung und (De-)Aktivierung von Kostenstellen, Konten und Anwendern mit Dialogen im Menü „Stammdaten“
 - Pflege der Passwörter durch den Anwender (erstmaliges Passwort festlegen, auf erstmaliges Passwort zurücksetzen)
 - Fachregeln als reine Funktionen: Buchungsstellen und Wirkung, Ansatzsperre, Buchungszeitraum, Geld-/Prozentwerte
-- Buchungen: Erfassen, Ändern und Löschen in offenen Monaten, Storno per Minusbuchung, alle drei Buchungsarten (Kostenstelle → Konto, Konto → Konto, Ansatzumbuchung)
+- Buchungen: Erfassen, Ändern und Löschen in offenen Monaten, Storno per Minusbuchung, alle drei Buchungsarten (Kostenstelle → Konto, Umbuchung zwischen Konten mit je einer Kostenstelle als zwei Buchungssätze, Ansatzumbuchung)
 - Plan-Ist-Fortschreibung und Ansatzsperre in einer Transaktion mit der Buchung, Neuaufbau der Projektionen aus den Buchungen
 - Buchungssteuerung (aktueller Buchungsmonat, Planung ein/aus) und Buchungsliste mit sichtbarem Monatsstatus (frei/fix)
 - Planung je Kostenstelle: Haushaltsansatz, Monatswerte (Plan-Ansatz, Art, Rückstellung Plan), Rückstellungsüberträge, Soll-/Ist-Vergleich je Monat; Eingabehilfen „gleichmäßig verteilen“ und „Quartalsbeträge“

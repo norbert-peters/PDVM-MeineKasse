@@ -51,7 +51,8 @@ Grundlage ist die **Erfassungsseite (`entry_side`)**: `DEBIT` (Soll) oder `CREDI
 | Buchungsart | Wirkung der Erfassungsseite |
 | --- | --- |
 | Kostenstelle → Konto (Ist-Buchung) | **Gleichgerichtet:** Kostenstelle und Konto werden auf derselben Seite gebucht. Es gibt keine Umkehr und keine Gegenseite. |
-| Konto → Konto, Ansatz Kostenstelle → Ansatz Kostenstelle | **Gegenläufig:** Die erste (führende) Stelle wird auf der Erfassungsseite gebucht, die zweite auf der gegenüberliegenden. Das ist fachlich zwingend, weil die Quelle abgibt und das Ziel erhält. |
+| Konto → Konto (nur Altbestand), Ansatz Kostenstelle → Ansatz Kostenstelle | **Gegenläufig:** Die erste (führende) Stelle wird auf der Erfassungsseite gebucht, die zweite auf der gegenüberliegenden. Das ist fachlich zwingend, weil die Quelle abgibt und das Ziel erhält. |
+| Umbuchung zwischen Konten (2.4a) | Zwei Buchungssätze Kostenstelle → Konto: führendes Konto mit Kostenstelle im **Soll**, Umbuchungskonto mit Kostenstelle im **Haben**. |
 
 Es gibt keine Sachkonten und keine doppelte Buchführung im klassischen Sinn („Kostenstelle an Bank“ entfällt). Sachkonten wären nur für Bilanz und GuV nötig. Eine Kategorie kann später als Merkmal ergänzt werden.
 
@@ -67,7 +68,7 @@ Beispiele:
 - Ausgabe 50 € für Lebensmittel, bezahlt vom Girokonto: Soll 50 € bei der Kostenstelle **und** Soll 50 € beim Girokonto. Kontostand und Haushaltsrest sinken um 50 €.
 - Erstattung 20 €: Haben 20 € bei beiden Stellen. Wird sie als Soll −20 € erfasst, bleibt das ebenfalls so gespeichert (kein Seitentausch). Die Wirkung auf Saldo und Haushaltsrest ist gleich, die Erfassung bleibt unterscheidbar.
 
-**Kontrollsumme:** Die Summe der Kontenbewegungen aus Ist-Buchungen (Haben − Soll) muss der Summe der Ist-Bewegungen aller Kostenstellen (Haben − Soll) entsprechen. Umbuchungen zwischen Konten ergeben in Summe 0. Diese Prüfung ersetzt die Soll = Haben-Kontrolle der Doppik.
+**Kontrollsumme:** Die Summe der Kontenbewegungen aus Ist-Buchungen (Haben − Soll) muss der Summe der Ist-Bewegungen aller Kostenstellen (Haben − Soll) entsprechen. Umbuchungen zwischen Konten haben je Konto eine Kostenstelle und ergeben in Summe 0 auf den Konten. Diese Prüfung ersetzt die Soll = Haben-Kontrolle der Doppik.
 
 ### 2.3 Auswirkungen auf Planung und Abgleich
 
@@ -87,12 +88,28 @@ Beispiele:
 | Art (`booking_type`) | Führende Stelle | Zweite Stelle | Seite der zweiten Stelle | Wirkung |
 | --- | --- | --- | --- | --- |
 | Kostenstelle → Konto (`COST_CENTER_TO_ACCOUNT`) | Kostenstelle | Konto | gleich | Ist der Kostenstelle und Saldo des Kontos; unterliegt der Ansatzsperre |
-| Konto → Konto (`ACCOUNT_TO_ACCOUNT`) | Konto | Konto | gegenläufig | nur Kontosalden, keine Planwirkung |
+| Konto → Konto (`ACCOUNT_TO_ACCOUNT`) | Konto | Konto | gegenläufig | **nicht mehr buchbar** (nur Altbestand, siehe 2.4a) |
 | Ansatz Kostenstelle → Ansatz Kostenstelle (`BUDGET_TRANSFER`) | Kostenstelle | Kostenstelle | gegenläufig | nur Jahresansatz beider Kostenstellen; kein Ist, keine Konten |
 
 Zulässige Kombinationen werden zentral je Buchungsart definiert und validiert. Die Kontoart (Giro, Spar, Anlage, Rückstellung) wird nicht mit der Planposition „Rückstellung“ vermischt.
 
 Die frühere Art „Kostenstelle an Kostenstelle“ als Ist-Umbuchung entfällt. Falsch zugeordnete Ist-Buchungen werden durch Minusbuchung und neue Buchung korrigiert (siehe 2.3).
+
+### 2.4a Umbuchung zwischen Konten
+
+Keine Bewegung auf einem Konto ohne Gegenstelle: Jede Kontobewegung hat eine Kostenstelle als Gegenstelle. Eine Umbuchung zwischen zwei Konten wird deshalb mit **je einer Kostenstelle pro Konto** erfasst und in **zwei Buchungssätze** vom Typ `COST_CENTER_TO_ACCOUNT` geteilt:
+
+| Satz | Stellen | Seite |
+| --- | --- | --- |
+| 1 | Kostenstelle (Soll) und führendes Konto | Soll (Ausgabe) |
+| 2 | Kostenstelle (Haben) und Umbuchungskonto | Haben |
+
+- Beide Sätze haben denselben Betrag (mit Vorzeichen, ≠ 0), dasselbe Buchungs- und Entstehungsdatum, Händler und Buchungstext. Sie sind über die gemeinsame GUID `bookings.transfer_id` verbunden.
+- Führendes Konto und Umbuchungskonto müssen verschieden sein; die beiden Kostenstellen dürfen gleich sein (die Wirkung auf die Kostenstelle ist dann 0).
+- Der Soll-Satz unterliegt wie jede Ist-Buchung der Ansatzsperre; die Sperre wird auf die Nettowirkung beider Sätze geprüft. Beide Sätze entstehen in **einer** Transaktion.
+- Ändern, Löschen und Stornieren wirken immer auf beide Sätze gemeinsam. Die Stornos bilden wieder eine Umbuchung (neue `transfer_id`, je Satz `reversal_of_id`) und können nur gemeinsam gelöscht werden. Ein einzelner Satz einer Umbuchung ist in der Buchungsmaske nicht änderbar.
+- Die Summe der Kontenbewegungen entspricht weiterhin der Summe der Ist-Bewegungen aller Kostenstellen (2.2).
+- Altbestand: Bereits vorhandene Buchungen vom Typ `ACCOUNT_TO_ACCOUNT` bleiben unverändert erhalten und werden in Salden und Abschlüssen weiter berücksichtigt. Sie können gelöscht oder storniert, aber nicht mehr geändert werden. Neue Buchungen dieser Art werden abgelehnt.
 
 ### 2.5 Perioden und Abschlüsse
 
@@ -222,7 +239,7 @@ Regeln:
 6. **Berechnung nach Monatssummen:** Die Entlastung wird je Planmonat aus der Monatssumme der Ist-Bewegung berechnet, nicht aus der Reihenfolge einzelner Buchungen. Damit ist sie jederzeit aus den Buchungen neu aufbaubar (Entwicklungsregel 3.11). Eine negative Monatsbewegung (Erstattung) gibt Entlastung höchstens bis zur bisherigen Entlastung zurück.
 7. **Ansatzsperre:** Unverändert (2.7). Die Rückstellung unterteilt den Jahresansatz und erweitert ihn nicht. Zuführung und Planentlastung sind Planung und berühren Ist, Haushaltsrest und Konten nicht.
 8. **Jahreswechsel:** Der nicht ausgeglichene Bestand (Endbestand Dezember) ist der Vortrag ins Folgejahr. Hat die Kostenstelle im Vorjahr einen Plan, wird der Vortrag von dort übernommen und ist nicht editierbar. Ohne Vorjahresplan wird er von Hand erfasst, solange der Januar des Jahres nicht abgeschlossen ist. Der Vortrag ist eine Projektion und aus den signierten Buchungen und Plänen jederzeit ableitbar; eine eigene Signatur gibt es nicht. Die Abschlussprüfung vergleicht gespeicherte Entlastung und Vorträge mit der Neuberechnung und bricht bei Abweichung ab (Projektionen neu aufbauen).
-9. **Reale Deckung:** Das Geld für Rückstellungen wird manuell per Konto → Konto-Buchung auf das Betriebsmittelkonto bewegt (2.13). Das System bucht dies nicht automatisch.
+9. **Reale Deckung:** Das Geld für Rückstellungen wird manuell per Umbuchung (2.4a) auf das Betriebsmittelkonto bewegt (2.13). Das System bucht dies nicht automatisch.
 10. **Auslöser der Berechnung:** Zuführungen werden beim Speichern der Planung berechnet (im Dialog als Live-Vorschau). Entlastung und Vorträge werden bei jeder Buchung, Änderung, Löschung und Stornierung in derselben Transaktion fortgeschrieben, über alle folgenden Planjahre hinweg, sowie beim Neuaufbau der Projektionen und beim Programmstart.
 11. **Bestand aus früheren Versionen:** Bisher von Hand erfasste Zuführungen (> 0) gelten nach der Migration als manuell und bleiben unverändert.
 
@@ -399,13 +416,13 @@ Das erstmalige Passwort wird nur als Hash abgelegt. Es kann zurückgesetzt werde
 
 | Tabelle | Wesentliche Felder |
 | --- | --- |
-| `bookings` | id, name, origin_date (Entstehungsdatum), booking_date, booking_type (`COST_CENTER_TO_ACCOUNT`, `ACCOUNT_TO_ACCOUNT`, `BUDGET_TRANSFER`), entry_side (`DEBIT`/`CREDIT`), amount_cents (**mit Vorzeichen, ≠ 0**), merchant, booking_text, reversal_of_id, fiscal_year, fiscal_month |
+| `bookings` | id, name, origin_date (Entstehungsdatum), booking_date, booking_type (`COST_CENTER_TO_ACCOUNT`, `ACCOUNT_TO_ACCOUNT`, `BUDGET_TRANSFER`), entry_side (`DEBIT`/`CREDIT`), amount_cents (**mit Vorzeichen, ≠ 0**), merchant, booking_text, reversal_of_id, fiscal_year, fiscal_month, transfer_id (gemeinsame GUID der beiden Sätze einer Umbuchung, sonst leer) |
 | `booking_legs` | id, booking_id, position (1 = führende Stelle, 2 = zweite Stelle), side (`DEBIT`/`CREDIT`), cost_center_id, account_id (genau eines von beiden) |
 
 Regeln:
 
 1. `amount_cents` ≠ 0, darf negativ sein.
-2. Jede Buchung hat genau zwei Stellen (Zeilen in `booking_legs`). Bei `COST_CENTER_TO_ACCOUNT` stehen beide auf `entry_side`. Bei `ACCOUNT_TO_ACCOUNT` und `BUDGET_TRANSFER` steht die führende Stelle auf `entry_side` und die zweite auf der gegenüberliegenden Seite. Bei `BUDGET_TRANSFER` tragen beide Stellen eine Kostenstelle und kein Konto.
+2. Jede Buchung hat genau zwei Stellen (Zeilen in `booking_legs`). Bei `COST_CENTER_TO_ACCOUNT` stehen beide auf `entry_side`. Bei `ACCOUNT_TO_ACCOUNT` (nur Altbestand) und `BUDGET_TRANSFER` steht die führende Stelle auf `entry_side` und die zweite auf der gegenüberliegenden Seite. Bei `BUDGET_TRANSFER` tragen beide Stellen eine Kostenstelle und kein Konto.
 3. Die Vorzeichen der Beträge werden nie normalisiert.
 4. Löschen ist nur in einem offenen Monat zulässig und wird protokolliert; danach nur durch Minusbuchung.
 
