@@ -23,7 +23,7 @@ from meine_kasse.application.services.booking_control_service import (
 from meine_kasse.application.services.booking_service import BookingService, BookingView
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.domain.enums import BookingType, Side
-from meine_kasse.domain.errors import DomainError
+from meine_kasse.domain.errors import ConfirmationRequiredError, DomainError
 from meine_kasse.domain.value_objects.money import format_euro
 from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
 from meine_kasse.presentation.dialogs.transfer_dialog import TransferDialog
@@ -265,7 +265,11 @@ class BookingListDialog(QDialog):
             question += "\nDer zugehörige zweite Buchungssatz der Umbuchung wird mitgelöscht."
         answer = QMessageBox.question(self, "Buchung löschen", question)
         if answer == QMessageBox.StandardButton.Yes:
-            self._run(lambda: self._bookings.delete(view.id, actor_id=self._actor_id))
+            self._run(
+                lambda confirmed: self._bookings.delete(
+                    view.id, actor_id=self._actor_id, confirm_negative_budget=confirmed
+                )
+            )
 
     def _reverse(self) -> None:
         view = self._selected_view()
@@ -281,14 +285,26 @@ class BookingListDialog(QDialog):
         if answer == QMessageBox.StandardButton.Yes:
             booking_date = self._bookings.default_booking_date()
             self._run(
-                lambda: self._bookings.reverse(
-                    view.id, booking_date=booking_date, actor_id=self._actor_id
+                lambda confirmed: self._bookings.reverse(
+                    view.id,
+                    booking_date=booking_date,
+                    actor_id=self._actor_id,
+                    confirm_negative_budget=confirmed,
                 )
             )
 
-    def _run(self, action: Callable[[], object]) -> None:
+    def _run(self, action: Callable[[bool], object]) -> None:
+        """Führt den Vorgang aus und wiederholt ihn nach Bestätigung einer Sicherheitsabfrage."""
         try:
-            action()
+            try:
+                action(False)
+            except ConfirmationRequiredError as error:
+                answer = QMessageBox.question(
+                    self, "Sicherheitsabfrage", f"{error}\n\nTrotzdem fortfahren?"
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
+                action(True)
         except DomainError as error:
             self._warn(str(error))
             return

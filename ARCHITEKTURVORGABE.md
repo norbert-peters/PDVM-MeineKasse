@@ -79,7 +79,7 @@ Beispiele:
 | Monatsabgleich | Der Plan-Ansatz des Monats wird mit der Ist-Bewegung des Monats verglichen, jeweils vorzeichenrichtig. | festgelegt |
 | Rückstellung ist | Wird je Kostenstelle und Planmonat aus der Ist-Bewegung und der Rückstellungsplanung berechnet (2.12). Es gibt keine Buchungen auf Rückstellungen. | festgelegt |
 | Storno/Korrektur | Eine Buchung wird durch eine **Minusbuchung auf derselben Seite** (gleiche Stellen, Betrag mit umgekehrtem Vorzeichen) korrigiert, verknüpft über `reversal_of_booking_id`. Das entspricht dem klassischen Rotstorno und verändert die Seite nicht. | festgelegt |
-| Vorzeichen von Planwerten | Planwerte (Jahresansatz, Monatsplan, Rückstellungsplan, Übertrag) werden in Soll-Richtung geführt, also mit **derselben Konvention** wie Ist-Werte. Der Jahresansatz ist immer ≥ 0. Plan und Ist sind damit ohne Umrechnung vergleichbar. | festgelegt |
+| Vorzeichen von Planwerten | Planwerte (Jahresansatz, Monatsplan, Rückstellungsplan, Übertrag) werden in Soll-Richtung geführt, also mit **derselben Konvention** wie Ist-Werte. Der Basisansatz und die Monatsplanwerte sind immer ≥ 0. Der wirksame Jahresansatz ist normalerweise ≥ 0 und wird nur negativ, wenn Haushaltsrest ohne Ansatz weitergegeben wurde (2.7, Regel 2a). Plan und Ist sind damit ohne Umrechnung vergleichbar. | festgelegt |
 | Überschreitung | Eine Überschreitung des Jahresansatzes **sperrt** die Buchung (siehe 2.7). | festgelegt |
 | Einnahmen/Ausgaben | Kostenstellen und Konten werden **nicht** als Einnahme- oder Ausgabeobjekt gekennzeichnet. Einnahmen und Erstattungen sind Haben- bzw. Minusbuchungen und entlasten die Kostenstelle über die Vorzeichenlogik. **Ausnahme:** Planbare und nicht planbare Einnahmen (Rente, Entgelte, Zinsen) liegen auf Kostenstellen der Art `INCOME` (2.15). | festgelegt |
 
@@ -139,7 +139,8 @@ Konten- und Kostenstellensalden sind aus den Buchungen berechenbar. Gespeicherte
 **Sperrregeln** (gelten bei aktivierter Planung für Kostenstellen der Art `STANDARD`; `WITHOUT_PLAN` wird nicht geprüft)
 
 1. Eine Ist-Buchung wird abgelehnt, wenn sie die Ist-Bewegung erhöht und der Haushaltsrest danach kleiner als 0 wäre. Buchungen mit entlastender Wirkung (Haben, Minusbuchungen) werden nie gesperrt.
-2. Eine Ansatzumbuchung wird abgelehnt, wenn bei der abgebenden Kostenstelle danach der Jahresansatz kleiner als 0, kleiner als die Ist-Bewegung oder kleiner als der verteilte Ansatz wäre.
+2. Eine Ansatzumbuchung wird abgelehnt, wenn bei der abgebenden Kostenstelle danach der Jahresansatz kleiner als die Ist-Bewegung (Haushaltsrest unter 0) oder kleiner als der verteilte Ansatz wäre.
+2a. **Haushaltsrest ohne Ansatz:** Ist die Ist-Bewegung negativ (z. B. Zuführung von Außenmitteln auf eine Kostenstelle ohne Ansatz) und ist nichts auf Monate verteilt, darf der Haushaltsrest per Ansatzumbuchung weitergegeben werden, auch wenn der Ansatz dafür nicht reicht. Der wirksame Jahresansatz der abgebenden Stelle wird dann negativ (Ansatz − Ist-Bewegung bleibt ≥ 0). Das erfordert eine **Sicherheitsabfrage**, die Höhe und den entstehenden negativen Ansatz nennt; ohne Bestätigung wird nicht gebucht. Das gilt auch für Löschen und Stornieren, wenn dadurch ein negativer Ansatz entsteht. Ein negativer Ansatz lässt keine Verteilung auf Monate und keine Zuführung zu; der Basisansatz bleibt ≥ 0. Das Verringern oder Stornieren der Zuführungsbuchung unter den weitergegebenen Betrag verhindert Regel 1 (Haushaltsrest nie unter 0); vorher ist die Umbuchung per Storno zurückzunehmen.
 3. Ansatzumbuchungen sind nur bei aktivierter Planung, zwischen zwei verschiedenen Kostenstellen der Art `STANDARD` und in einem offenen Zeitraum möglich. Zusätzlich darf eine Kostenstelle der Art `INCOME` als **abgebende** Stelle an eine `STANDARD`-Kostenstelle umbuchen (2.15); sie erhält nie Ansatz.
 4. Die Fehlermeldung nennt Haushaltsrest und fehlenden Betrag und verweist auf die Ansatzumbuchung. Die Buchungsmaske bietet dafür direkt den Einstieg an.
 5. Der Monatsplan sperrt nicht, sondern wird nur als Abweichung angezeigt. Das ist festgelegt, da bei unregelmäßigen Ausgaben und Rückstellungen eine monatliche Sperre unpraktisch wäre.
@@ -171,7 +172,7 @@ Regeln dazu:
 - Planänderungen sind nur in offenen Monaten möglich und werden im Audit-Protokoll festgehalten.
 - Die Signatur eines Monatsabschlusses umfasst auch die Ansatzumbuchungen und Monatsplanwerte des Monats.
 - Die Planungsart (`plan_mode`) entfällt als Bedienelement. Es gibt keine Quartalsverteilung mehr. „Gleichmäßig verteilen“ bleibt als Eingabehilfe, der Standardknopf des Planungsdialogs ist „Speichern“. Die Spalte `plan_mode` bleibt im Schema und in der Signatur unverändert erhalten (Rückwärtskompatibilität bestehender Abschlüsse); vorhandene Werte werden beim Speichern unverändert durchgereicht, neue Monate sind `MONTHLY`.
-- Hat eine Kostenstelle keinen Ansatz, kann darauf nur gebucht werden, nachdem ihr per Ansatzumbuchung Ansatz bereitgestellt wurde (ergibt sich aus der Ansatzsperre, 2.7).
+- Hat eine Kostenstelle keinen Ansatz, kann darauf nur gebucht werden, nachdem ihr per Ansatzumbuchung Ansatz bereitgestellt wurde (ergibt sich aus der Ansatzsperre, 2.7). Hat sie dagegen keinen Ansatz, aber Haushaltsrest (z. B. aus Außenmitteln), kann dieser per Ansatzumbuchung nach Sicherheitsabfrage weitergegeben werden (2.7, Regel 2a); eine eigene Buchungsart gibt es dafür nicht.
 
 Gegenüber „alles über Buchungen“ erzeugt dieser Weg keine Buchungen ohne fachlichen Wert für reine Umverteilungen. Gegenüber „alles in der Planung“ bleibt jede Änderung der Ansatzhöhe nachvollziehbar.
 
@@ -480,7 +481,7 @@ Ein Abschluss kann ausnahmsweise wiedereröffnet werden. Das ist ein eigener, do
 
 ## 7. Offene fachliche Entscheidungen
 
-Bereits entschieden und bestätigt: Planwerte in Soll-Richtung mit Jahresansatz ≥ 0 (2.3), Monatsplan nur als Anzeige ohne Sperre (2.7), Trennung „Ansatzhöhe per Buchung, Verteilung in der Planung“ (2.8) und die Haushaltsreserve (2.9).
+Bereits entschieden und bestätigt: Planwerte in Soll-Richtung mit Basisansatz ≥ 0 (2.3; der wirksame Ansatz kann nach Regel 2a negativ werden), Monatsplan nur als Anzeige ohne Sperre (2.7), Trennung „Ansatzhöhe per Buchung, Verteilung in der Planung“ (2.8) und die Haushaltsreserve (2.9).
 
 Mit Version 3 festgelegt (Entscheidungen E1–E7, Details in [ANALYSE_TESTERGEBNISSE_1.md](./ANALYSE_TESTERGEBNISSE_1.md), Abschnitt 4):
 

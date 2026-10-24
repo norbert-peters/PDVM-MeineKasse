@@ -11,6 +11,7 @@ from meine_kasse.application.services.master_data_service import MasterDataServi
 from meine_kasse.domain.enums import BookingType, ObjectKind, Side
 from meine_kasse.domain.errors import (
     BudgetExceededError,
+    ConfirmationRequiredError,
     NotFoundError,
     PeriodError,
     ValidationError,
@@ -380,6 +381,58 @@ def test_budget_transfer_cannot_give_away_used_or_distributed_budget(
     with pytest.raises(BudgetExceededError):
         transfer(bookings, world, leading=world.cc_b, second=world.cc_a, amount=1000)
     transfer(bookings, world, leading=world.cc_b, second=world.cc_a, amount=500)
+
+
+def test_remaining_budget_without_budget_can_be_passed_on_after_confirmation(
+    bookings: BookingService,
+    booking_control: BookingControlService,
+    database: Database,
+    world: World,
+) -> None:
+    enable_planning(booking_control)
+    set_budget(database, world.cc_a, 0)
+    set_budget(database, world.cc_b, 0)
+    book(bookings, world, side=Side.CREDIT, amount=5000)
+    assert bookings.cost_center_info(world.cc_a, D).remaining_cents == 5000
+    before = (booking_count(database), audit_names(database))
+
+    with pytest.raises(ConfirmationRequiredError, match="-50,00 €"):
+        transfer(bookings, world, leading=world.cc_a, second=world.cc_b, amount=5000)
+    assert (booking_count(database), audit_names(database)) == before
+    with pytest.raises(BudgetExceededError):
+        bookings.post(
+            booking_type=BookingType.BUDGET_TRANSFER,
+            entry_side=Side.DEBIT,
+            amount_cents=5001,
+            booking_date=D,
+            origin_date=D,
+            leading=cc(world.cc_a),
+            second=cc(world.cc_b),
+            actor_id=world.actor,
+            confirm_negative_budget=True,
+        )
+
+    transfer_id = bookings.post(
+        booking_type=BookingType.BUDGET_TRANSFER,
+        entry_side=Side.DEBIT,
+        amount_cents=5000,
+        booking_date=D,
+        origin_date=D,
+        leading=cc(world.cc_a),
+        second=cc(world.cc_b),
+        actor_id=world.actor,
+        confirm_negative_budget=True,
+    )
+
+    donor = bookings.cost_center_info(world.cc_a, D)
+    assert (donor.annual_budget_cents, donor.remaining_cents) == (-5000, 0)
+    assert bookings.cost_center_info(world.cc_b, D).annual_budget_cents == 5000
+    with pytest.raises(BudgetExceededError):
+        book(bookings, world, amount=1)
+
+    bookings.reverse(transfer_id, booking_date=D, actor_id=world.actor)
+    donor = bookings.cost_center_info(world.cc_a, D)
+    assert (donor.annual_budget_cents, donor.remaining_cents) == (0, 5000)
 
 
 def test_budget_transfer_requires_planning_and_planned_cost_centers(

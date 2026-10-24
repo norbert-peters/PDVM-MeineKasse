@@ -148,6 +148,7 @@ class BookingService:
         merchant: str = "",
         booking_text: str = "",
         actor_id: str,
+        confirm_negative_budget: bool = False,
     ) -> str:
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
@@ -167,7 +168,12 @@ class BookingService:
                 created_by=actor_id,
                 reversal_of_id=None,
             )
-            self._apply(uow, control, effects_of(booking))
+            self._apply(
+                uow,
+                control,
+                effects_of(booking),
+                confirm_negative_budget=confirm_negative_budget,
+            )
             uow.bookings.add(booking)
             uow.audit.add(_audit("BOOKING_CREATED", booking, actor_id, new=booking))
             uow.commit()
@@ -187,6 +193,7 @@ class BookingService:
         merchant: str = "",
         booking_text: str = "",
         actor_id: str,
+        confirm_negative_budget: bool = False,
     ) -> None:
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
@@ -221,7 +228,12 @@ class BookingService:
                 created_by=old.created_by_user_id,
                 reversal_of_id=None,
             )
-            self._apply(uow, control, effects_of(old).negated().combined(effects_of(new)))
+            self._apply(
+                uow,
+                control,
+                effects_of(old).negated().combined(effects_of(new)),
+                confirm_negative_budget=confirm_negative_budget,
+            )
             uow.bookings.update(new)
             uow.audit.add(_audit("BOOKING_UPDATED", new, actor_id, old=old, new=new))
             uow.commit()
@@ -329,7 +341,9 @@ class BookingService:
                 uow.audit.add(_audit("BOOKING_UPDATED", new, actor_id, old=old, new=new))
             uow.commit()
 
-    def delete(self, booking_id: str, *, actor_id: str) -> None:
+    def delete(
+        self, booking_id: str, *, actor_id: str, confirm_negative_budget: bool = False
+    ) -> None:
         """Löscht eine Buchung in einem offenen Monat und nimmt ihre Wirkung zurück.
 
         Gehört die Buchung zu einer Umbuchung, werden beide Buchungssätze gelöscht.
@@ -343,13 +357,25 @@ class BookingService:
                     raise ValidationError(
                         "Die Buchung wurde storniert. Bitte zuerst den Storno löschen."
                     )
-            self._apply(uow, control, _effects_of_all(group).negated())
+            self._apply(
+                uow,
+                control,
+                _effects_of_all(group).negated(),
+                confirm_negative_budget=confirm_negative_budget,
+            )
             for old in group:
                 uow.bookings.delete(old.id)
                 uow.audit.add(_audit("BOOKING_DELETED", old, actor_id, old=old))
             uow.commit()
 
-    def reverse(self, booking_id: str, *, booking_date: date, actor_id: str) -> str:
+    def reverse(
+        self,
+        booking_id: str,
+        *,
+        booking_date: date,
+        actor_id: str,
+        confirm_negative_budget: bool = False,
+    ) -> str:
         """Storniert durch Minusbuchung auf derselben Seite (kein Seitentausch).
 
         Gehört die Buchung zu einer Umbuchung, werden beide Buchungssätze storniert. Die
@@ -393,7 +419,12 @@ class BookingService:
                         transfer_id=reversal_transfer_id,
                     )
                 )
-            self._apply(uow, control, _effects_of_all(reversals))
+            self._apply(
+                uow,
+                control,
+                _effects_of_all(reversals),
+                confirm_negative_budget=confirm_negative_budget,
+            )
             for reversal in reversals:
                 uow.bookings.add(reversal)
                 uow.audit.add(_audit("BOOKING_REVERSED", reversal, actor_id, new=reversal))
@@ -751,7 +782,14 @@ class BookingService:
         )
         return debit, credit
 
-    def _apply(self, uow: UnitOfWork, control: BookingControl, effects: BookingEffects) -> None:
+    def _apply(
+        self,
+        uow: UnitOfWork,
+        control: BookingControl,
+        effects: BookingEffects,
+        *,
+        confirm_negative_budget: bool = False,
+    ) -> None:
         """Prüft die Ansatzsperre und schreibt Ansatz und Ist-Summen fort."""
         for budget in effects.budgets:
             plan = uow.plans.get_plan(budget.cost_center_id, budget.year) or CostCenterPlan(
@@ -762,7 +800,9 @@ class BookingService:
                 check_pass_on(income_position(uow, cost_center, budget.year), budget.delta_cents)
             elif control.planning_enabled:
                 check_budget_change(
-                    _position(uow, budget.cost_center_id, budget.year), budget.delta_cents
+                    _position(uow, budget.cost_center_id, budget.year),
+                    budget.delta_cents,
+                    negative_budget_confirmed=confirm_negative_budget,
                 )
             uow.plans.save_plan(
                 replace(plan, budget_transfer_cents=plan.budget_transfer_cents + budget.delta_cents)

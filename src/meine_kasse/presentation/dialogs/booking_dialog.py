@@ -18,7 +18,12 @@ from meine_kasse.application.services.booking_service import (
 )
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.domain.enums import BookingType, IncomeMode, ObjectKind, Side
-from meine_kasse.domain.errors import DomainError, PlanPeriodError, ValidationError
+from meine_kasse.domain.errors import (
+    ConfirmationRequiredError,
+    DomainError,
+    PlanPeriodError,
+    ValidationError,
+)
 from meine_kasse.domain.services.booking_rules import Stelle
 from meine_kasse.domain.value_objects.money import format_euro, parse_euro
 from meine_kasse.presentation.dialogs.master_edit_dialog import MasterEditDialog
@@ -242,11 +247,22 @@ class BookingDialog(MasterEditDialog):
 
     def save(self) -> None:
         try:
-            self._save_booking()
+            self._save_with_confirmation()
         except PlanPeriodError as error:
             QMessageBox.warning(self, "Buchung nicht möglich", str(error))
             raise
         self._show_reserve_notice()
+
+    def _save_with_confirmation(self) -> None:
+        try:
+            self._save_booking()
+        except ConfirmationRequiredError as error:
+            answer = QMessageBox.question(
+                self, "Sicherheitsabfrage", f"{error}\n\nTrotzdem umbuchen?"
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                raise
+            self._save_booking(confirm_negative_budget=True)
 
     def _show_reserve_notice(self) -> None:
         """Hinweis nach dem Speichern, wenn die Rückstellung für die Zahlung nicht ausreicht."""
@@ -262,7 +278,7 @@ class BookingDialog(MasterEditDialog):
         if notice:
             QMessageBox.information(self, "Hinweis zur Rückstellung", notice)
 
-    def _save_booking(self) -> None:
+    def _save_booking(self, *, confirm_negative_budget: bool = False) -> None:
         soll, haben = _amount(self.soll_edit.text()), _amount(self.haben_edit.text())
         if soll != 0 and haben != 0:
             raise ValidationError(
@@ -292,6 +308,7 @@ class BookingDialog(MasterEditDialog):
                 merchant=self.merchant_edit.text(),
                 booking_text=self.text_edit.toPlainText(),
                 actor_id=self._actor_id,
+                confirm_negative_budget=confirm_negative_budget,
             )
         else:
             self._bookings.update(
@@ -306,6 +323,7 @@ class BookingDialog(MasterEditDialog):
                 merchant=self.merchant_edit.text(),
                 booking_text=self.text_edit.toPlainText(),
                 actor_id=self._actor_id,
+                confirm_negative_budget=confirm_negative_budget,
             )
 
 

@@ -24,11 +24,13 @@ def distribute_evenly(total_cents: int, months: Sequence[int]) -> dict[int, int]
 
 
 def check_distribution(effective_budget_cents: int, distributed_cents: int) -> None:
-    """Die Summe der Monatsplanwerte darf den wirksamen Jahresansatz nicht übersteigen."""
-    if effective_budget_cents < 0:
-        raise ValidationError("Der wirksame Jahresansatz darf nicht negativ sein.")
-    if distributed_cents > effective_budget_cents:
-        excess = distributed_cents - effective_budget_cents
+    """Die Summe der Monatsplanwerte darf den wirksamen Jahresansatz nicht übersteigen.
+
+    Ein negativer Ansatz (Haushaltsrest wurde ohne Ansatz weitergegeben) lässt keine Verteilung zu.
+    """
+    limit = max(0, effective_budget_cents)
+    if distributed_cents > limit:
+        excess = distributed_cents - limit
         raise ValidationError(
             f"Die Monatsplanung ({format_euro(distributed_cents)}) übersteigt den Jahresansatz "
             f"({format_euro(effective_budget_cents)}) um {format_euro(excess)}."
@@ -37,8 +39,9 @@ def check_distribution(effective_budget_cents: int, distributed_cents: int) -> N
 
 def check_reserve_distribution(effective_budget_cents: int, reserve_cents: int) -> None:
     """Die Summe der Zuführungen darf den wirksamen Jahresansatz nicht übersteigen."""
-    if reserve_cents > effective_budget_cents:
-        excess = reserve_cents - effective_budget_cents
+    limit = max(0, effective_budget_cents)
+    if reserve_cents > limit:
+        excess = reserve_cents - limit
         raise ValidationError(
             f"Die Rückstellungen ({format_euro(reserve_cents)}) übersteigen den Jahresansatz "
             f"({format_euro(effective_budget_cents)}) um {format_euro(excess)}."

@@ -34,8 +34,13 @@ def test_distribution_may_use_the_whole_budget_but_not_more() -> None:
     check_distribution(10000, 0)
     with pytest.raises(ValidationError, match="1,00 €"):
         check_distribution(10000, 10100)
-    with pytest.raises(ValidationError, match="negativ"):
-        check_distribution(-1, 0)
+
+
+def test_negative_budget_allows_no_distribution() -> None:
+    check_distribution(-500, 0)
+    check_reserve_distribution(-500, 0)
+    with pytest.raises(ValidationError, match="1,00 €"):
+        check_distribution(-500, 100)
 
 
 def test_reserve_total_may_not_exceed_the_budget() -> None:

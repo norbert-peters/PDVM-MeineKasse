@@ -29,6 +29,10 @@ class PlanPeriodError(PeriodError):
     """Das Planjahr des Entstehungsdatums ist nicht vorhanden oder abgeschlossen."""
 
 
+class ConfirmationRequiredError(DomainError):
+    """Der Vorgang ist zulässig, wird aber erst nach ausdrücklicher Bestätigung ausgeführt."""
+
+
 class BudgetExceededError(DomainError):
     """Der Ansatz würde überschritten bzw. unterschritten."""
 

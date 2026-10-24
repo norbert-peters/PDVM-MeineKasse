@@ -462,7 +462,7 @@ def _notices(
         for month, shortfall in plan_shortfalls(carry_in_cents, reserve_plan, plan_cents).items()
     ]
     total = sum(reserve_plan.values())
-    if total > effective_budget_cents:
+    if total > max(0, effective_budget_cents):
         notices.append(
             f"Die Zuführungen ({format_euro(total)}) übersteigen den Jahresansatz "
             f"({format_euro(effective_budget_cents)}). Bitte die Rückstellung neu verteilen."

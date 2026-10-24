@@ -1,7 +1,11 @@
 import pytest
 
 from meine_kasse.domain.enums import CostCenterKind
-from meine_kasse.domain.errors import BudgetExceededError, ValidationError
+from meine_kasse.domain.errors import (
+    BudgetExceededError,
+    ConfirmationRequiredError,
+    ValidationError,
+)
 from meine_kasse.domain.services.budget_rules import (
     BudgetPosition,
     check_actual_booking,
@@ -65,9 +69,27 @@ def test_budget_cannot_fall_below_movement() -> None:
         check_budget_change(position(10000, 8000, 0), -2001)
 
 
-def test_budget_cannot_become_negative_when_movement_is_negative() -> None:
+def test_negative_movement_allows_giving_away_the_remaining_budget_after_confirmation() -> None:
+    # Ansatz 0, Zuführung von 50,00 € (Ist −50,00 €): Haushaltsrest 50,00 €.
+    with pytest.raises(ConfirmationRequiredError, match="-50,00 €"):
+        check_budget_change(position(0, -5000, 0), -5000)
+    check_budget_change(position(0, -5000, 0), -5000, negative_budget_confirmed=True)
+
+
+def test_budget_cannot_fall_below_negative_movement() -> None:
+    with pytest.raises(BudgetExceededError) as error:
+        check_budget_change(position(1000, -5000, 0), -6001, negative_budget_confirmed=True)
+    assert error.value.shortfall_cents == 1
+    assert "60,00 €" in str(error.value)
+
+
+def test_negative_budget_needs_no_distributed_budget() -> None:
     with pytest.raises(BudgetExceededError):
-        check_budget_change(position(1000, -5000, 0), -1001)
+        check_budget_change(position(0, -5000, 100), -1, negative_budget_confirmed=True)
+
+
+def test_no_confirmation_while_budget_stays_non_negative() -> None:
+    check_budget_change(position(1000, -5000, 0), -1000)
 
 
 def test_transfer_requires_planning_and_standard_cost_centers() -> None:

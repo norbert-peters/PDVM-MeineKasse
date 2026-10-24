@@ -3,7 +3,11 @@
 from dataclasses import dataclass
 
 from meine_kasse.domain.enums import CostCenterKind
-from meine_kasse.domain.errors import BudgetExceededError, ValidationError
+from meine_kasse.domain.errors import (
+    BudgetExceededError,
+    ConfirmationRequiredError,
+    ValidationError,
+)
 from meine_kasse.domain.value_objects.money import format_euro
 
 
@@ -71,16 +75,26 @@ def validate_budget_transfer_allowed(
         )
 
 
-def check_budget_change(position: BudgetPosition, budget_delta_cents: int) -> None:
+def check_budget_change(
+    position: BudgetPosition,
+    budget_delta_cents: int,
+    *,
+    negative_budget_confirmed: bool = False,
+) -> None:
     """Prüft die Änderung des Jahresansatzes einer Kostenstelle.
 
-    Ein sinkender Ansatz darf weder unter 0 noch unter die Ist-Bewegung oder den bereits
-    auf Monate verteilten Ansatz fallen.
+    Ein sinkender Ansatz darf weder unter die Ist-Bewegung (Haushaltsrest nicht unter 0) noch
+    unter den bereits auf Monate verteilten Ansatz fallen. Ist die Ist-Bewegung negativ (z. B.
+    Zuführung von Außenmitteln ohne Ansatz) und nichts verteilt, darf der Haushaltsrest auch
+    ohne Ansatz abgegeben werden. Der Ansatz wird dadurch negativ; das verlangt eine Bestätigung.
     """
     if budget_delta_cents >= 0:
         return
     budget_after = position.annual_budget_cents + budget_delta_cents
-    lowest_allowed = max(0, position.movement_cents, position.distributed_cents)
+    if position.distributed_cents > 0:
+        lowest_allowed = max(position.movement_cents, position.distributed_cents)
+    else:
+        lowest_allowed = position.movement_cents
     if budget_after < lowest_allowed:
         shortfall = lowest_allowed - budget_after
         available = max(0, position.annual_budget_cents - lowest_allowed)
@@ -88,4 +102,11 @@ def check_budget_change(position: BudgetPosition, budget_delta_cents: int) -> No
             f"Der abzugebende Ansatz ist zu hoch: Es können höchstens {format_euro(available)} "
             "umgebucht werden. Bei verteiltem Ansatz zuerst die Monatsplanung verringern.",
             shortfall,
+        )
+    if budget_after < 0 and not negative_budget_confirmed:
+        raise ConfirmationRequiredError(
+            "Die Kostenstelle hat nicht genug Ansatz, aber Haushaltsrest "
+            f"({format_euro(position.remaining_cents)}), z. B. aus einer Zuführung. "
+            f"Der Ansatz wird dadurch {format_euro(budget_after)} (negativ). "
+            "Der Haushaltsrest wird an die andere Kostenstelle weitergegeben."
         )
