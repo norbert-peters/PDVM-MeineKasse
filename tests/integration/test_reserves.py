@@ -106,14 +106,58 @@ def test_planning_every_month_means_no_reserve(planning: PlanningService, world:
     assert view.reserve_notices == ()
 
 
-def test_reserve_is_raised_before_planned_payments(planning: PlanningService, world: World) -> None:
+def test_planned_payments_keep_the_even_reserve_and_relieve_it_in_the_plan(
+    planning: PlanningService, world: World
+) -> None:
     _save(planning, world, plans=[MonthPlanInput(3, 60000), MonthPlanInput(9, 60000)])
 
     view = planning.get_plan_view(world.cc_a, YEAR)
 
-    reserves = [m.reserve_plan_cents for m in view.months]
+    assert [m.reserve_plan_cents for m in view.months] == [10000] * 12
+    assert [m.reserve_release_cents for m in view.months if m.reserve_release_cents] == [
+        30000,
+        60000,
+    ]
+    assert view.reserve_carry_out_cents == 30000
+    assert len(view.reserve_notices) == 1 and "Monat 03/2026" in view.reserve_notices[0]
+
+
+def test_reserve_for_payment_targets_is_raised_before_planned_payments(
+    planning: PlanningService, world: World
+) -> None:
+    preview = planning.preview_reserve(
+        world.cc_a,
+        YEAR,
+        base_budget_cents=120000,
+        carry_in_cents=0,
+        months=[MonthPlanInput(3, 60000), MonthPlanInput(9, 60000)],
+        to_payment_targets=True,
+    )
+
+    reserves = [preview.reserve_plan[m] for m in range(1, 13)]
     assert reserves == [20000] * 3 + [10000] * 6 + [0] * 3
-    assert view.reserve_notices == ()
+    assert preview.notices == () and preview.carry_out_cents == 0
+
+
+def test_the_actual_payment_replaces_the_planned_release_after_closing(
+    planning: PlanningService,
+    bookings: BookingService,
+    closing: ClosingService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    booking_control.update(planning_enabled=False, current_year=YEAR, current_month=5)
+    _save(planning, world, plans=[MonthPlanInput(5, 30000)])
+    assert planning.get_plan_view(world.cc_a, YEAR).reserve_carry_out_cents == 120000 - 30000
+
+    _spend(bookings, world, origin=date(2026, 5, 5), cents=20000)
+    assert planning.get_plan_view(world.cc_a, YEAR).reserve_carry_out_cents == 120000 - 30000
+
+    closing.close_month(actor_id=world.actor)
+
+    view = planning.get_plan_view(world.cc_a, YEAR)
+    assert view.reserve_carry_out_cents == 120000 - 20000
+    assert _release(planning, world) == {5: 20000}
 
 
 def test_manual_months_are_kept_when_the_plan_changes(
@@ -482,8 +526,8 @@ def test_preview_does_not_write_anything(
         months=[MonthPlanInput(3, 60000), MonthPlanInput(9, 60000)],
     )
 
-    assert [preview.reserve_plan[m] for m in (1, 2, 3)] == [20000] * 3
-    assert preview.carry_out_cents == 120000 and preview.notices == ()
+    assert [preview.reserve_plan[m] for m in (1, 2, 3)] == [10000] * 3
+    assert preview.carry_out_cents == 30000 and len(preview.notices) == 1
     with database.session_factory() as session:
         assert session.scalars(select(CostCenterPlanModel)).first() is None
         assert session.scalars(select(MonthlyPlanModel)).first() is None

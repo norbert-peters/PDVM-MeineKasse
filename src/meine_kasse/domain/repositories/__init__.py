@@ -13,9 +13,11 @@ from meine_kasse.domain.entities import (
     ClosureReopening,
     CostCenter,
     CostCenterPlan,
+    Document,
     MonthlyActual,
     MonthlyPlan,
     PeriodClosure,
+    ReportDefinition,
     User,
     YearClosure,
 )
@@ -181,6 +183,30 @@ class UserSettingRepository(Protocol):
     def delete(self, user_id: str, key: str) -> None: ...
 
 
+class DocumentRepository(Protocol):
+    def add(self, document: Document) -> None: ...
+
+    def get(self, document_id: str) -> Document | None: ...
+
+    def list_all(self) -> Sequence[Document]:
+        """Alle Dokumente, neueste zuerst."""
+        ...
+
+
+class ReportDefinitionRepository(Protocol):
+    """Gespeicherte Auswertungen je Anwender, eindeutig über den Namen."""
+
+    def get(self, user_id: str, name: str) -> ReportDefinition | None: ...
+
+    def list_for_user(self, user_id: str) -> Sequence[ReportDefinition]: ...
+
+    def save(self, user_id: str, definition: ReportDefinition) -> None:
+        """Legt die Auswertung an oder ersetzt die gleichnamige."""
+        ...
+
+    def delete(self, user_id: str, name: str) -> None: ...
+
+
 class UnitOfWork(Protocol):
     """Eine Transaktion. Ohne `commit()` wird beim Verlassen zurückgerollt."""
 
@@ -213,6 +239,12 @@ class UnitOfWork(Protocol):
 
     @property
     def plans(self) -> PlanRepository: ...
+
+    @property
+    def documents(self) -> DocumentRepository: ...
+
+    @property
+    def report_definitions(self) -> ReportDefinitionRepository: ...
 
     def __enter__(self) -> Self: ...
 

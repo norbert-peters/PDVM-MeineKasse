@@ -3,6 +3,7 @@ import random
 import pytest
 
 from meine_kasse.domain.services.reserve_rules import (
+    compute_reserve_outlook,
     compute_reserve_year,
     distribute_reserve,
     is_directly_planned,
@@ -24,6 +25,7 @@ def _distribute(
     carry_in: int = 0,
     fixed: dict[int, int] | None = None,
     free: list[int] | None = None,
+    to_payment_targets: bool = True,
 ) -> dict[int, int]:
     return distribute_reserve(
         budget_cents=budget,
@@ -31,6 +33,7 @@ def _distribute(
         plan_cents=plan,
         fixed=fixed or {},
         free_months=ALL if free is None else free,
+        to_payment_targets=to_payment_targets,
     )
 
 
@@ -66,6 +69,21 @@ def test_even_spread_gives_the_rounding_rest_to_the_first_months() -> None:
 
     assert sum(result.values()) == 1000
     assert result[1] == 84 and result[12] == 83
+
+
+def test_planned_payments_do_not_change_the_even_spread() -> None:
+    plan = _plan(m1=1200)
+
+    result = _distribute(1200, plan, to_payment_targets=False)
+
+    assert result == dict.fromkeys(ALL, 100)
+    assert plan_shortfalls(0, result, plan) == {1: 1100}
+
+
+def test_even_spread_still_stops_when_all_months_are_planned() -> None:
+    result = _distribute(1200, dict.fromkeys(ALL, 100), to_payment_targets=False)
+
+    assert result == dict.fromkeys(ALL, 0)
 
 
 def test_reserve_is_raised_before_a_payment_that_is_not_covered() -> None:
@@ -262,3 +280,50 @@ def test_balance_is_never_negative_and_ignores_booking_order(seed: int) -> None:
     assert year.carry_out_cents == carry + sum(reserve.values()) - sum(year.release.values())
     shuffled = dict(sorted(movement.items(), reverse=True))
     assert compute_reserve_year(carry, reserve, shuffled) == year
+
+
+# Ausblick nach Plan
+
+
+def test_planned_payments_relieve_the_reserve_in_open_months() -> None:
+    reserve = dict.fromkeys(ALL, 100)
+
+    year = compute_reserve_outlook(0, reserve, _plan(m6=600, m12=600), {}, set())
+
+    assert year.release[6] == 600 and year.release[12] == 600
+    assert year.balance[6] == 0 and year.carry_out_cents == 0
+
+
+def test_the_actual_payment_replaces_the_plan_in_a_closed_month() -> None:
+    reserve = dict.fromkeys(ALL, 100)
+
+    year = compute_reserve_outlook(0, reserve, _plan(m6=600), {6: 450}, {6})
+
+    assert year.release[6] == 450
+    assert year.carry_out_cents == 1200 - 450
+
+
+def test_an_open_month_uses_the_higher_of_plan_and_actual() -> None:
+    reserve = dict.fromkeys(ALL, 100)
+
+    partial = compute_reserve_outlook(0, reserve, _plan(m6=600), {6: 200}, set())
+    exceeded = compute_reserve_outlook(0, reserve, _plan(m6=300), {6: 400}, set())
+
+    assert partial.release[6] == 600
+    assert exceeded.release[6] == 400
+
+
+def test_outlook_without_plan_equals_the_actual_calculation() -> None:
+    reserve = dict.fromkeys(ALL, 100)
+    movement = {3: 250, 7: 100}
+
+    assert compute_reserve_outlook(40, reserve, {}, movement, set()) == compute_reserve_year(
+        40, reserve, movement
+    )
+
+
+def test_a_planned_payment_is_limited_to_the_saved_amount() -> None:
+    year = compute_reserve_outlook(0, dict.fromkeys(ALL, 100), _plan(m2=500), {}, set())
+
+    assert year.release[2] == 200
+    assert year.shortfall == {2: 300}

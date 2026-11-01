@@ -68,6 +68,9 @@ class MasterListDialog(QDialog):
         self.button_row = QHBoxLayout()
         for button in (self.new_button, self.edit_button, self.toggle_button):
             self.button_row.addWidget(button)
+        self.pdf_button = self.data_table.pdf_button(title)
+        if self.pdf_button is not None:
+            self.button_row.addWidget(self.pdf_button)
         self.button_row.addStretch()
         self.button_row.addWidget(close_button)
 

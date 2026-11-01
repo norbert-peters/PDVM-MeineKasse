@@ -334,7 +334,7 @@ def _plan_with_base(dialog: PlanningDialog, text: str) -> None:
     dialog.base_edit.textEdited.emit(text)
 
 
-def test_reserve_is_distributed_live_while_typing_plan_amounts(
+def test_reserve_stays_even_while_typing_plan_amounts(
     qapp: QApplication,
     planning: PlanningService,
     booking_control: BookingControlService,
@@ -349,11 +349,67 @@ def test_reserve_is_distributed_live_while_typing_plan_amounts(
     _set(dialog, 2, PLAN, "600,00")
     _set(dialog, 8, PLAN, "600,00")
 
+    assert {_text(dialog, row, RESERVE) for row in range(12)} == {"100,00 €"}
+    assert {_text(dialog, row, KIND) for row in range(12)} == {"maschinell"}
+    assert _text(dialog, 2, RELEASE) == "300,00 €"
+    assert _text(dialog, 8, BALANCE) == "0,00 €"
+    assert "03/2026" in dialog.message_label.text()
+
+
+def test_planned_payments_relieve_the_reserve_in_the_plan(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+
+    _set(dialog, 8, PLAN, "400,00")
+
+    assert _text(dialog, 8, RELEASE) == "400,00 €"
+    assert _text(dialog, 8, BALANCE) == "500,00 €"
+    assert dialog.carry_out_label.text() == "800,00 €"
+
+
+def test_target_button_raises_the_reserve_before_the_payments(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+    _set(dialog, 2, PLAN, "600,00")
+    _set(dialog, 8, PLAN, "600,00")
+
+    dialog.target_button.click()
+
     assert [_text(dialog, row, RESERVE) for row in (0, 1, 2)] == ["200,00 €"] * 3
     assert [_text(dialog, row, RESERVE) for row in range(3, 9)] == ["100,00 €"] * 6
     assert [_text(dialog, row, RESERVE) for row in (9, 10, 11)] == ["0,00 €"] * 3
-    assert _text(dialog, 8, BALANCE) == "1.200,00 €"
+    assert {_text(dialog, row, KIND) for row in range(12)} == {"manuell"}
+    assert _text(dialog, 8, BALANCE) == "0,00 €"
     assert dialog.message_label.text() == ""
+
+    dialog.reserve_button.click()
+    assert {_text(dialog, row, RESERVE) for row in range(12)} == {"100,00 €"}
+
+
+def test_target_button_changes_nothing_when_the_even_reserve_is_enough(
+    qapp: QApplication,
+    planning: PlanningService,
+    booking_control: BookingControlService,
+    world: World,
+) -> None:
+    dialog = _dialog(planning, booking_control, world)
+    _plan_with_base(dialog, "1.200,00")
+    _set(dialog, 11, PLAN, "1.200,00")
+
+    dialog.target_button.click()
+
+    assert {_text(dialog, row, KIND) for row in range(12)} == {"maschinell"}
+    assert "deckt" in dialog.message_label.text()
 
 
 def test_planning_every_month_directly_means_no_reserve(

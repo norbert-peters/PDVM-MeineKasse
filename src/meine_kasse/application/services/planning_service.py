@@ -22,6 +22,7 @@ from meine_kasse.application.services.income_planning import (
     get_income_cost_center,
     save_income_plan,
 )
+from meine_kasse.application.services.liquidity_planning import LiquidityView, build_liquidity_view
 from meine_kasse.application.services.reserve_projection import apply_projection
 from meine_kasse.domain.entities import AuditEntry, CostCenter, CostCenterPlan, MonthlyPlan
 from meine_kasse.domain.enums import CostCenterKind, PlanMode
@@ -37,7 +38,7 @@ from meine_kasse.domain.services.planning_rules import (
 )
 from meine_kasse.domain.services.reserve_rules import (
     ReserveYear,
-    compute_reserve_year,
+    compute_reserve_outlook,
     distribute_reserve,
     plan_shortfalls,
 )
@@ -194,6 +195,11 @@ class PlanningService:
             if save_income_plan(uow, cost_center, year, months, actor_id):
                 uow.commit()
 
+    def get_liquidity_view(self, year: int) -> LiquidityView:
+        """Monatsvergleich Einnahmen gegen Liquiditätsbedarf (Rückstellungen und Zahlungen)."""
+        with self._uow_factory() as uow:
+            return build_liquidity_view(uow, year)
+
     def get_plan_view(self, cost_center_id: str, year: int) -> PlanView:
         with self._uow_factory() as uow:
             control = load_or_create_control(uow, self._today)
@@ -204,21 +210,26 @@ class PlanningService:
             closed_months = uow.closures.closed_months()
             year_closed = year in uow.closures.closed_years()
             carry_in = _resolve_carry_in(uow, cost_center_id, year, None, strict=False)
-            supplied, released = carry_in, 0
+            closed = {m for m in MONTHS if year_closed or (year, m) in closed_months}
+            outlook = compute_reserve_outlook(
+                carry_in,
+                {m: p.reserve_plan_cents for m, p in monthly.items()},
+                {m: p.plan_cents for m, p in monthly.items()},
+                {m: a.movement_cents for m, a in actuals.items()},
+                closed,
+            )
             months = []
             for month in MONTHS:
                 planned = monthly.get(month)
                 actual = actuals.get(month)
-                supplied += planned.reserve_plan_cents if planned else 0
-                released += actual.reserve_actual_cents if actual else 0
                 months.append(
                     PlanMonthView(
                         month=month,
                         plan_cents=planned.plan_cents if planned else 0,
                         reserve_plan_cents=planned.reserve_plan_cents if planned else 0,
                         reserve_is_manual=planned.reserve_is_manual if planned else False,
-                        reserve_release_cents=actual.reserve_actual_cents if actual else 0,
-                        reserve_balance_cents=supplied - released,
+                        reserve_release_cents=outlook.release[month],
+                        reserve_balance_cents=outlook.balance[month],
                         plan_mode=planned.plan_mode if planned else PlanMode.MONTHLY,
                         debit_cents=actual.debit_cents if actual else 0,
                         credit_cents=actual.credit_cents if actual else 0,
@@ -235,7 +246,7 @@ class PlanningService:
                 budget_transfer_cents=plan.budget_transfer_cents if plan else 0,
                 reserve_carry_in_cents=carry_in,
                 reserve_carry_in_editable=_carry_in_editable(uow, cost_center_id, year),
-                reserve_carry_out_cents=(plan.reserve_carry_out_cents if plan else carry_in),
+                reserve_carry_out_cents=outlook.carry_out_cents,
                 reserve_notices=_notices(
                     year,
                     {item.month: item.plan_cents for item in months},
@@ -254,8 +265,13 @@ class PlanningService:
         base_budget_cents: int,
         carry_in_cents: int | None,
         months: Sequence[MonthPlanInput],
+        to_payment_targets: bool = False,
     ) -> ReservePreview:
-        """Berechnet die Rückstellung für die Eingaben, ohne zu speichern (Live-Anzeige)."""
+        """Berechnet die Rückstellung für die Eingaben, ohne zu speichern (Live-Anzeige).
+
+        Mit `to_payment_targets` sind die maschinellen Zuführungen auf die Zahlungsmonate
+        ausgerichtet (Konstellation Zahlungsziel), sonst gleichmäßig verteilt.
+        """
         validate_plan_amounts(base_cents=base_budget_cents, carry_in_cents=carry_in_cents or 0)
         for item in months:
             validate_month_amounts(item.month, item.plan_cents, item.reserve_plan_cents)
@@ -269,6 +285,7 @@ class PlanningService:
                 carry_in_cents=carry_in_cents,
                 months=months,
                 strict=False,
+                to_payment_targets=to_payment_targets,
             )
         result = resolved.year_result
         return ReservePreview(
@@ -479,11 +496,13 @@ def _resolve(
     carry_in_cents: int | None,
     months: Sequence[MonthPlanInput],
     strict: bool,
+    to_payment_targets: bool = False,
 ) -> _Resolved:
     """Bestimmt Planwerte, Zuführungen (maschinell oder manuell) und Rückstellungsrechnung.
 
     Abgeschlossene Monate behalten ihre Werte. Mit `strict` werden unzulässige Vortragsänderungen
-    abgelehnt, sonst (Vorschau) bleibt der abgeleitete bzw. gespeicherte Vortrag.
+    abgelehnt, sonst (Vorschau) bleibt der abgeleitete bzw. gespeicherte Vortrag. Mit
+    `to_payment_targets` werden die maschinellen Zuführungen auf die Zahlungsmonate ausgerichtet.
     """
     plan = uow.plans.get_plan(cost_center_id, year)
     existing = {item.month: item for item in uow.plans.monthly_plans(cost_center_id, year)}
@@ -530,8 +549,10 @@ def _resolve(
         plan_cents=plan_cents,
         fixed=fixed,
         free_months=free,
+        to_payment_targets=to_payment_targets,
     )
     movement = {a.month: a.movement_cents for a in uow.plans.actuals_for_year(cost_center_id, year)}
+    closed = {m for m in MONTHS if year_closed or (year, m) in closed_months}
     return _Resolved(
         plan_cents=plan_cents,
         reserve_plan=reserve_plan,
@@ -539,7 +560,7 @@ def _resolve(
         modes=modes,
         carry_in_cents=carry_in,
         effective_budget_cents=effective,
-        year_result=compute_reserve_year(carry_in, reserve_plan, movement),
+        year_result=compute_reserve_outlook(carry_in, reserve_plan, plan_cents, movement, closed),
         notices=_notices(year, plan_cents, reserve_plan, carry_in, effective),
     )
 

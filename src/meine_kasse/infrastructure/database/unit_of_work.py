@@ -11,8 +11,10 @@ from meine_kasse.infrastructure.database.repositories import (
     SqlBookingRepository,
     SqlClosureRepository,
     SqlCostCenterRepository,
+    SqlDocumentRepository,
     SqlOpeningBalanceRepository,
     SqlPlanRepository,
+    SqlReportDefinitionRepository,
     SqlUserRepository,
     SqlUserSettingRepository,
 )
@@ -31,6 +33,8 @@ class SqlAlchemyUnitOfWork:
     bookings: SqlBookingRepository
     opening_balances: SqlOpeningBalanceRepository
     plans: SqlPlanRepository
+    documents: SqlDocumentRepository
+    report_definitions: SqlReportDefinitionRepository
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
@@ -49,6 +53,8 @@ class SqlAlchemyUnitOfWork:
         self.bookings = SqlBookingRepository(session)
         self.opening_balances = SqlOpeningBalanceRepository(session)
         self.plans = SqlPlanRepository(session)
+        self.documents = SqlDocumentRepository(session)
+        self.report_definitions = SqlReportDefinitionRepository(session)
         return self
 
     def __exit__(

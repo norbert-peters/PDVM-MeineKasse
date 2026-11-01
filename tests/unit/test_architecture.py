@@ -14,9 +14,9 @@ FORBIDDEN_IMPORTS = {
     "presentation": ("meine_kasse.infrastructure",),
 }
 THIRD_PARTY_FORBIDDEN = {
-    "domain": ("sqlalchemy", "PySide6", "alembic", "argon2"),
-    "application": ("sqlalchemy", "PySide6", "alembic", "argon2"),
-    "presentation": ("sqlalchemy", "alembic", "argon2"),
+    "domain": ("sqlalchemy", "PySide6", "alembic", "argon2", "reportlab"),
+    "application": ("sqlalchemy", "PySide6", "alembic", "argon2", "reportlab"),
+    "presentation": ("sqlalchemy", "alembic", "argon2", "reportlab"),
 }
 
 

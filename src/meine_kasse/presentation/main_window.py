@@ -11,13 +11,15 @@ from meine_kasse.application.services.backup_service import BackupService
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.closing_service import ClosingService
+from meine_kasse.application.services.document_service import DocumentService
 from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.opening_balance_service import OpeningBalanceService
 from meine_kasse.application.services.planning_service import PlanningService
+from meine_kasse.application.services.report_service import ReportService
 from meine_kasse.application.services.user_service import UserService
 from meine_kasse.application.services.user_settings_service import UserSettingsService
 from meine_kasse.build_info import build_label
-from meine_kasse.config import database_path, log_dir
+from meine_kasse.config import database_path, documents_dir, log_dir
 from meine_kasse.domain.enums import BookingType
 from meine_kasse.domain.errors import DomainError
 from meine_kasse.presentation.dialogs.account_dialogs import AccountListDialog
@@ -26,11 +28,15 @@ from meine_kasse.presentation.dialogs.booking_dialog import BookingDialog
 from meine_kasse.presentation.dialogs.booking_list_dialog import BookingListDialog
 from meine_kasse.presentation.dialogs.closing_dialog import ClosingDialog
 from meine_kasse.presentation.dialogs.cost_center_dialogs import CostCenterListDialog
+from meine_kasse.presentation.dialogs.document_archive_dialog import DocumentArchiveDialog
 from meine_kasse.presentation.dialogs.income_planning_dialog import IncomePlanningDialog
+from meine_kasse.presentation.dialogs.liquidity_dialog import LiquidityDialog
 from meine_kasse.presentation.dialogs.opening_balances_dialog import OpeningBalancesDialog
 from meine_kasse.presentation.dialogs.planning_dialog import PlanningDialog
+from meine_kasse.presentation.dialogs.report_dialog import ReportDialog
 from meine_kasse.presentation.dialogs.user_dialogs import UserListDialog
 from meine_kasse.presentation.widgets.data_table import TablePreferences
+from meine_kasse.presentation.widgets.pdf_export import PdfExporter
 
 _PLANNED_TIP = "In Vorbereitung"
 
@@ -52,12 +58,18 @@ class MainWindow(QMainWindow):
         opening_balances: OpeningBalanceService,
         backup: BackupService,
         user_settings: UserSettingsService | None = None,
+        documents: DocumentService | None = None,
+        reports: ReportService | None = None,
     ) -> None:
         super().__init__()
         self.logout_requested = False
         self._login = login
+        self._exporter = None if documents is None else PdfExporter(documents, login.user_id)
+        self._reports = reports
         self._preferences = (
-            None if user_settings is None else TablePreferences(user_settings, login.user_id)
+            None
+            if user_settings is None
+            else TablePreferences(user_settings, login.user_id, self._exporter)
         )
         self._auth = auth
         self._master_data = master_data
@@ -109,8 +121,14 @@ class MainWindow(QMainWindow):
         planning_menu = bar.addMenu("&Planung")
         self._action(planning_menu, "Kostenstellenplanung", self._open_planning)
         self._action(planning_menu, "Einnahmenplanung", self._open_income_planning)
+        self._action(planning_menu, "Liquiditätsplanung", self._open_liquidity)
         closing_menu = bar.addMenu("&Abschluss")
         self._action(closing_menu, "Monats- und Jahresabschluss", self._open_closing)
+
+        if self._reports is not None and self._exporter is not None:
+            report_menu = bar.addMenu("A&uswertung")
+            self._action(report_menu, "Auswertung…", self._open_report)
+            self._action(report_menu, "Dokumentenarchiv…", self._open_documents)
 
         help_menu = bar.addMenu("&Hilfe")
         self._action(help_menu, "&Über Meine Kasse", self._about)
@@ -146,10 +164,21 @@ class MainWindow(QMainWindow):
     def _open_planning(self) -> None:
         PlanningDialog(self._planning, self._booking_control, self._login.user_id, self).exec()
 
+    def _open_liquidity(self) -> None:
+        LiquidityDialog(self._planning, self._booking_control, self).exec()
+
     def _open_income_planning(self) -> None:
         IncomePlanningDialog(
             self._planning, self._booking_control, self._login.user_id, self
         ).exec()
+
+    def _open_report(self) -> None:
+        if self._reports is not None and self._exporter is not None:
+            ReportDialog(self._reports, self._exporter, self._login.user_id, self).exec()
+
+    def _open_documents(self) -> None:
+        if self._exporter is not None:
+            DocumentArchiveDialog(self._exporter, self, preferences=self._preferences).exec()
 
     def _open_closing(self) -> None:
         ClosingDialog(self._closing, self._booking_control, self._login.user_id, self).exec()
@@ -196,7 +225,12 @@ class MainWindow(QMainWindow):
         except DomainError as error:
             QMessageBox.warning(self, "Datensicherung", str(error))
             return
-        QMessageBox.information(self, "Datensicherung", f"Die Sicherung wurde erstellt:\n{target}")
+        QMessageBox.information(
+            self,
+            "Datensicherung",
+            f"Die Sicherung wurde erstellt:\n{target}\n\n"
+            f"Die Dokumente liegen im Ordner:\n{self._backup.documents_target(target)}",
+        )
 
     def _logout(self) -> None:
         self.logout_requested = True
@@ -210,5 +244,6 @@ class MainWindow(QMainWindow):
             f"{build_label()}\n"
             "Einfache Haushaltsbuchhaltung auf Kostenstellen und Konten.\n\n"
             f"Datenbank: {database_path()}\n"
+            f"Dokumente: {documents_dir()}\n"
             f"Protokolle: {log_dir()}",
         )

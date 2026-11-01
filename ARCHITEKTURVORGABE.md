@@ -233,8 +233,14 @@ Begriffe (aus Sicht der Rückstellung; Soll = Bildung, Haben = Entlastung, Besta
 Regeln:
 
 1. **Direkte Planung:** Ein Ansatz wird im Monat der voraussichtlichen Zahlung geplant. Ist in allen zwölf Monaten ein Planwert vorhanden, entstehen keine Rückstellungen.
-2. **Maschinelle Verteilung:** Ist nicht jeder Monat belegt, wird der **gesamte** Jahresansatz gleichmäßig auf die freien Monate als Zuführung verteilt (Rundungsrest an die ersten Monate). Danach wird je Zahlungsmonat geprüft, ob Vortrag plus Zuführungen bis einschließlich dieses Monats die geplanten Zahlungen (kumuliert) decken. Fehlt Deckung, werden die Zuführungen **vor der Zahlung erhöht**, und zwar in den freien Monaten seit der letzten Deckungslücke; die Monate nach der Zahlung erhalten entsprechend weniger. Die Summe der Zuführungen bleibt dadurch gleich und übersteigt den Jahresansatz nie, kein Monat wird negativ. Reicht der Ansatz oder die Zahl freier Monate nicht aus, erscheint ein Hinweis im Planungsdialog (Monat und Fehlbetrag).
-3. **Manuelle Anpassung:** Die Zuführung ist je Monat änderbar. Ein von Hand gesetzter Monat ist gekennzeichnet (`reserve_is_manual`) und wird von der maschinellen Verteilung nicht überschrieben; ein leeres Feld macht ihn wieder maschinell. Die Schaltfläche „Rückstellung maschinell“ verwirft die manuellen Werte der offenen Monate. Abgeschlossene Monate werden nie verändert. Die Summe der Zuführungen darf den Jahresansatz nicht übersteigen (sonst wird nicht gespeichert).
+2. **Maschinelle Verteilung (Konstellationen):** Ist nicht jeder Monat belegt, wird der **gesamte** Jahresansatz gleichmäßig auf die offenen (nicht gesperrten) Monate als Zuführung verteilt (Rundungsrest an die ersten Monate). Geplante Zahlungen ändern diese Verteilung nicht, sie bleibt bei jeder Eingabe stehen. Daraus ergeben sich die Konstellationen:
+   1. *Gleichmäßig verteilen, keine Rückstellung:* Der Ansatz wird in allen zwölf Monaten als Zahlung geplant (monatliche Zahlungen).
+   2. *Gleichmäßige Rückstellung über das Jahr:* Die Rückstellung läuft mit Vortrag auf und wird mit der Ist-Zahlung entlastet.
+   3. *Gleichmäßige Rückstellung mit unregelmäßigen Zahlungen:* Die geplanten Zahlungen entlasten die Rückstellung schon im Plan (Planentlastung), damit der Vortrag ins Folgejahr den tatsächlich angesparten Betrag zeigt. Mit der Ist-Zahlung wird die Planentlastung abgeglichen (Regel 12).
+   4. *Rückstellung auf ein Zahlungsziel:* Die Schaltfläche „Rückstellung auf Zahlungsziel“ prüft je Zahlungsmonat, ob Vortrag plus Zuführungen bis einschließlich dieses Monats die geplanten Zahlungen (kumuliert) decken. Fehlt Deckung, werden die Zuführungen **vor der Zahlung erhöht**, und zwar in den offenen Monaten seit der letzten Deckungslücke; die Monate nach der Zahlung erhalten entsprechend weniger. Die Summe der Zuführungen bleibt gleich und übersteigt den Jahresansatz nie, kein Monat wird negativ. Die Werte werden als manuelle Zuführung übernommen und bleiben so bei weiteren Eingaben stehen. Reicht der Ansatz oder die Zahl offener Monate nicht aus, erscheint ein Hinweis im Planungsdialog.
+
+   Reicht die Rückstellung für eine geplante Zahlung nicht, erscheint ein Hinweis mit Monat und Fehlbetrag. Der Fehlbetrag wird in dem Monat gemeldet, in dem er entsteht (Regel 4).
+3. **Manuelle Anpassung:** Die Zuführung ist je Monat änderbar. Ein von Hand gesetzter Monat ist gekennzeichnet (`reserve_is_manual`) und wird von der maschinellen Verteilung nicht überschrieben; ein leeres Feld macht ihn wieder maschinell. Die Schaltfläche „Rückstellung maschinell“ verwirft die manuellen Werte der offenen Monate und verteilt sie wieder gleichmäßig. Abgeschlossene Monate werden nie verändert. Die Summe der Zuführungen darf den Jahresansatz nicht übersteigen (sonst wird nicht gespeichert).
 4. **Keine negativen Rückstellungen:** Der Bestand ist nie kleiner als 0. Es wird nicht gegen künftige Zuführungen entlastet.
 5. **Entlastung bei Buchung:** Eine Ist-Bewegung der Kostenstelle entlastet die Rückstellung nur bis zum verfügbaren Bestand (Vortrag + Zuführungen bis einschließlich Planmonat − bisherige Entlastungen). Ist der Bestand zu gering, erscheint nach dem Speichern ein Hinweis mit dem Fehlbetrag; die Buchung wird dennoch ausgeführt. Ohne Rückstellung im Planjahr (z. B. bei Planung in allen Monaten) gibt es keinen Hinweis. Die Buchungsmaske zeigt den Rückstellungsbestand bis zum Planmonat.
 6. **Berechnung nach Monatssummen:** Die Entlastung wird je Planmonat aus der Monatssumme der Ist-Bewegung berechnet, nicht aus der Reihenfolge einzelner Buchungen. Damit ist sie jederzeit aus den Buchungen neu aufbaubar (Entwicklungsregel 3.11). Eine negative Monatsbewegung (Erstattung) gibt Entlastung höchstens bis zur bisherigen Entlastung zurück.
@@ -243,6 +249,21 @@ Regeln:
 9. **Reale Deckung:** Das Geld für Rückstellungen wird manuell per Umbuchung (2.4a) auf das Betriebsmittelkonto bewegt (2.13). Das System bucht dies nicht automatisch.
 10. **Auslöser der Berechnung:** Zuführungen werden beim Speichern der Planung berechnet (im Dialog als Live-Vorschau). Entlastung und Vorträge werden bei jeder Buchung, Änderung, Löschung und Stornierung in derselben Transaktion fortgeschrieben, über alle folgenden Planjahre hinweg, sowie beim Neuaufbau der Projektionen und beim Programmstart.
 11. **Bestand aus früheren Versionen:** Bisher von Hand erfasste Zuführungen (> 0) gelten nach der Migration als manuell und bleiben unverändert.
+12. **Planentlastung und Ist:** Der Vortrag ins Folgejahr und die Anzeige im Planungsdialog (Entlastung, Bestand) rechnen je Monat mit der Zahlung, die entlastet: in offenen Monaten die höhere von Planzahlung und Ist-Bewegung (eine negative Bewegung zählt als Erstattung), in abgeschlossenen Monaten nur die Ist-Bewegung. Die Entlastung bleibt auf den verfügbaren Bestand begrenzt. Das gespeicherte Ist (`reserve_actual_cents`) und der Hinweis beim Buchen rechnen weiterhin nur mit der Ist-Bewegung. Ein Monatsabschluss und das Wiedereröffnen schreiben die Vorträge neu fort.
+
+### 2.16 Liquiditätsplanung
+
+Der lesende Dialog „Liquiditätsplanung“ (Menü Planung) vergleicht je Planmonat die erwarteten Einnahmen mit dem Liquiditätsbedarf. Entnahmen aus Anlagevermögen oder Betriebsmitteln werden dafür in der Einnahmenplanung (2.15) als Einnahme geplant.
+
+| Spalte | Inhalt |
+| --- | --- |
+| Einnahmen (erwartet) | Summe der Einnahmen-Kostenstellen. Modus `PLAN`: in offenen Monaten Plan, mindestens die gebuchte Einnahme. Modus `ACTUAL` und abgeschlossene Monate: nur die gebuchte Einnahme. |
+| Zuführung Rückstellung | Summe der Zuführungen (`reserve_plan_cents`) aller Kostenstellen mit Plan |
+| Zahlung ohne Rückstellung | Zahlung des Monats (Regel 12 aus 2.12) abzüglich der Entlastung der Rückstellung, nie negativ. Aus der Rückstellung gedeckte Zahlungen belasten die Liquidität nicht noch einmal. |
+| Bedarf | Zuführung + Zahlung ohne Rückstellung |
+| Einnahmen − Bedarf | Überschuss oder Fehlbetrag des Monats, ergänzend fortlaufend über das Jahr aufsummiert |
+
+Ein Monat mit Fehlbetrag wird hervorgehoben und im Hinweis genannt. Die Prüfung ist eine Anzeige und sperrt nichts.
 
 ### 2.13 Cash-Management
 
@@ -303,7 +324,9 @@ Mit `INCOME` als Empfänger sind Ansatzumbuchungen nicht möglich, ebenso nicht 
 1. Die PDF-Datei wird unter `%LOCALAPPDATA%\MeineKasse\Dokumente` abgelegt. Dateiname: maschineller Teil (Zeitstempel, Tabellenname) plus manueller Zusatz (höchstens 40 Zeichen, unzulässige Dateizeichen werden entfernt).
 2. Jede erzeugte Datei wird in `documents` registriert (Name, Art, Ersteller, Zeitpunkt, Größe, SHA-256). Das Dokumentenarchiv ist aus der Anwendung erreichbar, durchsuch- und sortierbar; Anzeige und Druck erfolgen im PDF-Programm des Systems.
 3. Die PDF-Erzeugung läuft über einen Port der Anwendungsschicht, die Umsetzung liegt in der Infrastruktur (austauschbar).
-4. Die Datensicherung enthält Datenbank **und** Dokumentenverzeichnis.
+4. Die Datensicherung enthält Datenbank **und** Dokumentenverzeichnis: Die Datenbank wird als `<Name>.sqlite` geschrieben, die Dokumente liegen als Kopie im Ordner `<Name>_Dokumente` daneben. Die Sicherung darf nicht im Dokumentenverzeichnis liegen.
+5. Dateiname: `JJJJ-MM-TT_HHMMSS_<Tabellenname>[_<Zusatz>].pdf`. Eine vorhandene Datei wird nie überschrieben, sondern nummeriert (`_2`). Beim Öffnen und mit „Prüfen“ wird Größe und SHA-256 mit dem Archiveintrag verglichen („Datei fehlt“ / „Datei verändert“).
+6. Das Archiv kennt kein Löschen; Einträge und Dateien bleiben bestehen.
 
 **Auswertungen**
 
@@ -322,6 +345,13 @@ Mit `INCOME` als Empfänger sind Ansatzumbuchungen nicht möglich, ebenso nicht 
 5. Gruppierung: mehrere Ebenen mit Zwischensummen; je Gruppenebene ist wählbar, ob nur Summen oder alle Daten ausgegeben werden.
 6. Gesamtsummen stehen immer in einer Zeile im Kopf der Auswertung.
 7. Die Druckausgabe erfolgt als PDF ins Dokumentenarchiv.
+8. **Umsetzung:**
+   - Filteroperatoren: Text (enthält, gleich, ungleich), Betrag/Zahl/Datum (gleich, ungleich, größer, kleiner, jeweils auch mit „oder gleich“). Ein leerer Betrag zählt im Vergleich als 0. Werte werden deutsch eingegeben (`12,50`, `01.05.2026`).
+   - Sortier- und Gruppierungsspalten müssen in der Spaltenauswahl enthalten sein; gruppiert werden kann nur nach Kategoriespalten (Datum, Text, Jahr, Monat), höchstens in drei Ebenen. Die Gruppenwerte stehen in der Zelle der Gruppierungsspalte („Kostenstelle: 100 Lebensmittel“, „Summe 100 Lebensmittel“). Bei „nur Summen“ entfallen die Zeilen darunter.
+   - In Gruppensummen zeigen `NON_ADDITIVE`-Beträge (Ansatz, Restansatz, Saldo, Rückstellungsbestand) den Wert der letzten Zeile der Gruppe, in der Gesamtzeile erscheint nichts.
+   - Plan/Ist umfasst Kostenstellen der Art `STANDARD` mit Plan; Monate ganz ohne Plan, Ist und Rückstellungswerte entfallen. Der Restansatz ist der wirksame Jahresansatz abzüglich der kumulierten Ist-Bewegung bis zum Monat.
+   - Konten: Anfangssaldo (Vortrag), Soll, Haben und Saldo (Anfangssaldo + Haben − Soll). Die Spalten „erwarteter Kontostand“ und „Differenz“ folgen mit dem Cash-Management (2.13) als Katalogzeilen.
+   - Buchungen: alle Buchungen aller Perioden mit Status (offen/abgeschlossen, Storno, storniert); die Buchungsart „Umbuchung“ nennt als Gegenkonto das Konto des zweiten Buchungssatzes.
 
 ## 3. Systemarchitektur
 

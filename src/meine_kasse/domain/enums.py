@@ -51,3 +51,28 @@ class PlanMode(StrEnum):
 class ClosureKind(StrEnum):
     MONTH = "MONTH"
     YEAR = "YEAR"
+
+
+class DocumentType(StrEnum):
+    """Herkunft einer PDF-Datei im Dokumentenarchiv (Vorgabe 2.14)."""
+
+    TABLE = "TABLE"
+    REPORT = "REPORT"
+
+
+class ReportSource(StrEnum):
+    """Datenquelle einer Auswertung mit fester Zeilenbedeutung (Vorgabe 2.14)."""
+
+    BOOKINGS = "BOOKINGS"
+    PLAN_ACTUAL = "PLAN_ACTUAL"
+    ACCOUNTS = "ACCOUNTS"
+
+
+class FilterOperator(StrEnum):
+    EQUALS = "EQUALS"
+    NOT_EQUALS = "NOT_EQUALS"
+    CONTAINS = "CONTAINS"
+    GREATER = "GREATER"
+    GREATER_OR_EQUAL = "GREATER_OR_EQUAL"
+    LESS = "LESS"
+    LESS_OR_EQUAL = "LESS_OR_EQUAL"

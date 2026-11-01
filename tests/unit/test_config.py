@@ -28,6 +28,18 @@ def test_database_can_be_overridden_and_logs_follow(
     assert log_dir() == custom.parent / "logs"
 
 
+def test_packaged_data_lives_next_to_the_executable(
+    local_app_data: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    exe = tmp_path / "PDVM_MeineKasse" / "MeineKasse.exe"
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys.executable", str(exe))
+
+    assert data_dir() == exe.parent.resolve() / "Daten"
+    assert database_path() == exe.parent.resolve() / "Daten" / "meine_kasse.sqlite"
+    assert log_dir() == exe.parent.resolve() / "Daten" / "logs"
+
+
 def test_fallback_without_local_app_data(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.delenv(DATABASE_ENV_VARIABLE, raising=False)

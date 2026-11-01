@@ -10,7 +10,10 @@ from datetime import date
 
 from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.services.booking_control_service import load_or_create_control
-from meine_kasse.application.services.reserve_projection import projection_mismatch_cost_centers
+from meine_kasse.application.services.reserve_projection import (
+    apply_projection,
+    projection_mismatch_cost_centers,
+)
 from meine_kasse.domain.entities import AuditEntry, ClosureReopening, PeriodClosure, YearClosure
 from meine_kasse.domain.enums import ClosureKind
 from meine_kasse.domain.errors import ValidationError
@@ -161,6 +164,7 @@ class ClosingService:
                     current_month=next_month,
                 )
             )
+            _refresh_reserves(uow)
             uow.audit.add(
                 AuditEntry(
                     name="MONTH_CLOSED",
@@ -244,6 +248,7 @@ class ClosingService:
                     current_month=month,
                 )
             )
+            _refresh_reserves(uow)
             uow.audit.add(
                 _reopen_audit("MONTH_REOPENED", target, closure.signature, reason, actor_id)
             )
@@ -369,6 +374,12 @@ def _require_latest(uow: UnitOfWork, target: ClosureRef) -> None:
             "Abschlüsse können nur in umgekehrter Reihenfolge wiedereröffnet werden. "
             f"Zuerst muss {latest.label} wiedereröffnet werden."
         )
+
+
+def _refresh_reserves(uow: UnitOfWork) -> None:
+    """Ein Abschluss ersetzt die Planzahlung durch das Ist, daher Vorträge neu fortschreiben."""
+    for cost_center_id in sorted({plan.cost_center_id for plan in uow.plans.list_plans()}):
+        apply_projection(uow, cost_center_id, 0)
 
 
 def _reopen_audit(

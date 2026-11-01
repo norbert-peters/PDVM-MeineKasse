@@ -104,7 +104,7 @@ Version 2. Diese Regeln sind für jeden Beitrag verbindlich. Fachliche Details s
 9. Standardschaltflächen und Rückfragen sind deutsch (Ja/Nein). Auswahllisten sind per Texteingabe filterbar; dafür wird das gemeinsame Widget verwendet, kein eigener Combobox-Code in Dialogen.
 10. Tabellen verwenden die gemeinsame Tabellenkomponente `DataTable` (Spaltenfilter, einstufige Sortierung nach Rohwerten, PDF-Ausgabe). Zellen sind `SortItem`; nach dem Füllen wird `apply()` aufgerufen. Die Sortierung wird je Anwender und Tabelle in `user_settings` gespeichert, nicht in `QSettings`. Eingabetabellen mit Zeilenbezug (Planung, Abschluss, Anfangssalden) sind ausgenommen.
 11. Auswertungen verwenden nur Spalten und Filter aus einer festen Liste je Datenquelle (kein freies SQL). Summen werden nur über `ADDITIVE`-Spalten gebildet.
-12. Erzeugte PDF-Dateien werden im Dokumentenarchiv registriert und von der Datensicherung erfasst. Dateinamen werden bereinigt (keine Pfadzeichen, höchstens 40 Zeichen manueller Zusatz).
+12. Erzeugte PDF-Dateien werden im Dokumentenarchiv registriert und von der Datensicherung erfasst. Dateinamen werden bereinigt (keine Pfadzeichen, höchstens 40 Zeichen manueller Zusatz). Die PDF-Erzeugung (`reportlab`) liegt in `infrastructure/reporting` hinter dem Port `PdfRenderer`; die Auswertungsmaschine (`application/reporting`) kennt weder Oberfläche noch Datenbank.
 
 ## 7. Tests und Qualität
 

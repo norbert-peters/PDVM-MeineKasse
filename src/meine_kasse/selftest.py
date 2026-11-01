@@ -2,7 +2,8 @@
 
 Er läuft ohne Oberfläche in einer **temporären** Datenbank und berührt nie die echten Daten.
 Geprüft werden die Schichten, die im gepackten Programm am ehesten fehlen: Migrationen,
-Passwort-Hash (Argon2), Buchen, Abschluss mit Signatur und Datensicherung.
+Passwort-Hash (Argon2), Buchen, Abschluss mit Signatur, PDF-Erzeugung (reportlab) und
+Datensicherung.
 """
 
 import logging
@@ -11,8 +12,10 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
+from meine_kasse.application.services.document_service import DocumentState
 from meine_kasse.bootstrap import Container, build_container
-from meine_kasse.domain.enums import AccountType, BookingType, ObjectKind, Side
+from meine_kasse.domain.entities import ReportDefinition
+from meine_kasse.domain.enums import AccountType, BookingType, ObjectKind, ReportSource, Side
 from meine_kasse.domain.services.booking_rules import Stelle
 
 logger = logging.getLogger("meine_kasse.selftest")
@@ -62,10 +65,25 @@ def _closing(container: Container, state: dict[str, str]) -> None:
         raise AssertionError("Die Signatur des Abschlusses ist ungültig.")
 
 
+def _pdf_archive(container: Container, state: dict[str, str]) -> None:
+    definition = ReportDefinition(
+        "Selbsttest", ReportSource.BOOKINGS, ("booking_date", "cost_center", "debit", "credit")
+    )
+    view = container.reports.export_pdf(definition, suffix="Selbsttest", actor_id=state["user"])
+    path = container.documents.path_of(view.id)
+    if not path.read_bytes().startswith(b"%PDF-") or view.size_bytes == 0:
+        raise AssertionError("Das PDF wurde nicht korrekt erzeugt.")
+    if container.documents.verify(view.id) is not DocumentState.OK:
+        raise AssertionError("Das PDF im Dokumentenarchiv ist nicht unverändert.")
+
+
 def _backup(container: Container, state: dict[str, str], directory: Path) -> None:
     created = container.backup.create_backup(directory / "sicherung.sqlite")
     if not created.exists() or created.stat().st_size == 0:
         raise AssertionError("Die Datensicherung wurde nicht erstellt.")
+    documents = container.backup.documents_target(created)
+    if not any(documents.glob("*.pdf")):
+        raise AssertionError("Die Datensicherung enthält die Dokumente nicht.")
 
 
 def run_selftest() -> int:
@@ -79,6 +97,7 @@ def run_selftest() -> int:
             ("Stammdaten anlegen", lambda: _master_data(container, state)),
             ("Buchen", lambda: _booking(container, state)),
             ("Monatsabschluss mit Signatur", lambda: _closing(container, state)),
+            ("PDF und Dokumentenarchiv", lambda: _pdf_archive(container, state)),
             ("Datensicherung", lambda: _backup(container, state, Path(directory))),
         ]
         try:

@@ -4,14 +4,15 @@ Eine Rückstellung ist ein virtuelles Konto der Kostenstelle. Sie wird nicht geb
 Plan und Ist berechnet (Soll = Bildung/Zuführung, Haben = Entlastung, Bestand = Soll - Haben):
 
 - Zuführung: je Monat gebildete Rückstellung (`reserve_plan_cents`).
-- Planentlastung: die direkt geplanten Zahlungen (`plan_cents`) im Zahlungsmonat.
+- Planentlastung: die direkt geplanten Zahlungen (`plan_cents`) im Zahlungsmonat. Sie gelten in
+  offenen Monaten, bis die Ist-Zahlung sie übersteigt oder der Monat abgeschlossen ist.
 - Entlastung (ist): Ist-Bewegung des Monats, soweit Bestand vorhanden ist.
-- Vortrag: Bestand zum Jahresende, Anfangsbestand des Folgejahres.
+- Vortrag: Bestand zum Jahresende nach Plan und Ist, Anfangsbestand des Folgejahres.
 
 Der Bestand ist nie negativ. Alle Beträge sind ganzzahlige Cent.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from meine_kasse.domain.services.planning_rules import MONTHS, distribute_evenly
@@ -57,19 +58,13 @@ def plan_shortfalls(
 ) -> dict[int, int]:
     """Monate, in denen die Rückstellung die geplante Zahlung nicht deckt (Fehlbetrag in Cent).
 
-    Gemeldet wird der Fehlbetrag in dem Monat, in dem er entsteht (nicht jeder Folgemonat
-    erneut). Bei Planung in allen Monaten gibt es keine Rückstellung und damit keinen Fehlbetrag.
+    Wie bei der Entlastung gibt es keinen negativen Bestand: Ein Fehlbetrag wird in dem Monat
+    gemeldet, in dem er entsteht, und nicht gegen spätere Zuführungen aufgerechnet. Bei Planung
+    in allen Monaten gibt es keine Rückstellung und damit keinen Fehlbetrag.
     """
     if is_directly_planned(plan_cents):
         return {}
-    shortfalls: dict[int, int] = {}
-    previous_deficit = 0
-    for month, balance in plan_balances(carry_in_cents, reserve_plan, plan_cents).items():
-        deficit = max(0, -balance)
-        if deficit > previous_deficit:
-            shortfalls[month] = deficit - previous_deficit
-        previous_deficit = deficit
-    return shortfalls
+    return compute_reserve_year(carry_in_cents, reserve_plan, plan_cents).shortfall
 
 
 def distribute_reserve(
@@ -79,6 +74,7 @@ def distribute_reserve(
     plan_cents: Mapping[int, int],
     fixed: Mapping[int, int],
     free_months: Sequence[int],
+    to_payment_targets: bool = False,
 ) -> dict[int, int]:
     """Verteilt den Jahresansatz maschinell als Zuführung auf die freien Monate.
 
@@ -86,12 +82,13 @@ def distribute_reserve(
     `free_months` die Monate, die berechnet werden dürfen.
 
     1. Sind alle Monate direkt geplant, bleiben die freien Monate bei 0.
-    2. Sonst wird der noch nicht gebundene Ansatz gleichmäßig verteilt (Rundungsrest an die
-       ersten Monate).
-    3. Deckt Vortrag + Zuführung bis zum Zahlungsmonat die geplanten Zahlungen nicht, werden die
-       Zuführungen vor der Zahlung erhöht, und zwar in den freien Monaten seit der letzten
-       Deckungslücke. Die Summe bleibt gleich, weil die Monate nach der Zahlung entsprechend
-       weniger erhalten. Nichts wird negativ, die Summe übersteigt den Ansatz nie.
+    2. Sonst wird der noch nicht gebundene Ansatz gleichmäßig auf die freien Monate verteilt
+       (Rundungsrest an die ersten Monate). Geplante Zahlungen ändern daran nichts.
+    3. Nur mit `to_payment_targets`: Deckt Vortrag + Zuführung bis zum Zahlungsmonat die
+       geplanten Zahlungen nicht, werden die Zuführungen vor der Zahlung erhöht, und zwar in den
+       freien Monaten seit der letzten Deckungslücke. Die Summe bleibt gleich, weil die Monate
+       nach der Zahlung entsprechend weniger erhalten. Nichts wird negativ, die Summe übersteigt
+       den Ansatz nie.
     """
     free = sorted(set(free_months))
     reserve = {month: fixed.get(month, 0) for month in MONTHS}
@@ -103,6 +100,8 @@ def distribute_reserve(
     available = max(0, budget_cents - sum(reserve.values()))
     for month, cents in distribute_evenly(available, free).items():
         reserve[month] = cents
+    if not to_payment_targets:
+        return reserve
 
     last_covered = 0
     running_plan = 0
@@ -172,3 +171,35 @@ def compute_reserve_year(
         released_so_far += relief
         balance[month] = supplied - released_so_far
     return ReserveYear(release, shortfall, balance, balance[MONTHS[-1]])
+
+
+def effective_movement(
+    plan_cents: Mapping[int, int], movement: Mapping[int, int], closed_months: Collection[int]
+) -> dict[int, int]:
+    """Zahlung je Monat, die die Rückstellung im Ausblick entlastet.
+
+    Abgeschlossene Monate zählen nur mit der Ist-Bewegung. In offenen Monaten gilt die geplante
+    Zahlung, solange das Ist sie nicht übersteigt. So zeigt der Vortrag den Betrag, der nach
+    Plan tatsächlich angespart ist, und die Ist-Zahlung gleicht den Plan beim Zahlen ab.
+    """
+    return {
+        month: (
+            movement.get(month, 0)
+            if month in closed_months or movement.get(month, 0) < 0
+            else max(plan_cents.get(month, 0), movement.get(month, 0))
+        )
+        for month in MONTHS
+    }
+
+
+def compute_reserve_outlook(
+    carry_in_cents: int,
+    reserve_plan: Mapping[int, int],
+    plan_cents: Mapping[int, int],
+    movement: Mapping[int, int],
+    closed_months: Collection[int],
+) -> ReserveYear:
+    """Rückstellung nach Plan: wie `compute_reserve_year`, aber offene Monate mit Planzahlung."""
+    return compute_reserve_year(
+        carry_in_cents, reserve_plan, effective_movement(plan_cents, movement, closed_months)
+    )

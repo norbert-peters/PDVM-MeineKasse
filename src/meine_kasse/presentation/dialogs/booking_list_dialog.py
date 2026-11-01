@@ -132,6 +132,9 @@ class BookingListDialog(QDialog):
             self.reverse_button,
         ):
             buttons.addWidget(button)
+        pdf_button = self.data_table.pdf_button("Buchungen", self._period_lines)
+        if pdf_button is not None:
+            buttons.addWidget(pdf_button)
         buttons.addStretch()
         buttons.addWidget(close_button)
 
@@ -147,6 +150,15 @@ class BookingListDialog(QDialog):
         return button
 
     # Daten
+
+    def _period_lines(self) -> list[str]:
+        month = self.month_combo.currentData()
+        period = (
+            f"Jahr {self.year_spin.value()}"
+            if month == _ALL_MONTHS
+            else f"{MONTH_NAMES[month - 1]} {self.year_spin.value()}"
+        )
+        return [f"Zeitraum: {period}"]
 
     def selected_id(self) -> str | None:
         return self.data_table.selected_id()

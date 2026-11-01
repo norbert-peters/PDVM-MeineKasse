@@ -2,6 +2,10 @@
 
 from meine_kasse.infrastructure.database.models.audit import AuditLogModel
 from meine_kasse.infrastructure.database.models.booking import BookingLegModel, BookingModel
+from meine_kasse.infrastructure.database.models.document import (
+    DocumentModel,
+    ReportDefinitionModel,
+)
 from meine_kasse.infrastructure.database.models.master import (
     AccountModel,
     BookingControlModel,
@@ -29,9 +33,11 @@ __all__ = [
     "ClosureReopeningModel",
     "CostCenterModel",
     "CostCenterPlanModel",
+    "DocumentModel",
     "MonthlyActualModel",
     "MonthlyPlanModel",
     "PeriodClosureModel",
+    "ReportDefinitionModel",
     "UserModel",
     "UserSettingModel",
     "YearClosureModel",

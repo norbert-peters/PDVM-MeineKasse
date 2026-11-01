@@ -100,6 +100,9 @@ class ReopeningHistoryDialog(QDialog):
 
         buttons = QHBoxLayout()
         buttons.addStretch()
+        pdf_button = self.data_table.pdf_button("Wiedereröffnungen")
+        if pdf_button is not None:
+            buttons.addWidget(pdf_button)
         buttons.addWidget(close_button)
         layout = QVBoxLayout(self)
         layout.addWidget(self.data_table)

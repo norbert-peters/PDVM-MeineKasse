@@ -9,21 +9,24 @@
 Verwendung: Zeilen in `table` füllen (Zellen als `SortItem`), danach `apply()` aufrufen.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QLineEdit,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from meine_kasse.application.reporting.pdf_model import PdfColumn, PdfRow, PdfTable
 from meine_kasse.application.services.user_settings_service import TableSort, UserSettingsService
 from meine_kasse.domain.errors import DomainError
+from meine_kasse.presentation.widgets.pdf_export import PdfExporter
 from meine_kasse.presentation.widgets.sorting import SortKey, explicit_key, sort_key_for_text
 
 AUTO = object()
@@ -48,11 +51,17 @@ class SortItem(QTableWidgetItem):
 
 
 class TablePreferences:
-    """Verbindet Tabellen mit den Einstellungen des angemeldeten Anwenders."""
+    """Verbindet Tabellen mit den Einstellungen und der PDF-Ausgabe des angemeldeten Anwenders."""
 
-    def __init__(self, service: UserSettingsService, user_id: str) -> None:
+    def __init__(
+        self,
+        service: UserSettingsService,
+        user_id: str,
+        exporter: PdfExporter | None = None,
+    ) -> None:
         self._service = service
         self._user_id = user_id
+        self.exporter = exporter
 
     def load(self, table_key: str) -> TableSort | None:
         try:
@@ -100,6 +109,9 @@ class FilterHeader(QHeaderView):
 
     def texts(self) -> list[str]:
         return [editor.text().strip().casefold() for editor in self._editors]
+
+    def raw_texts(self) -> list[str]:
+        return [editor.text().strip() for editor in self._editors]
 
     def sizeHint(self) -> QSize:
         size = super().sizeHint()
@@ -236,14 +248,73 @@ class DataTable(QWidget):
                 return
 
     def visible_rows(self) -> list[list[str]]:
-        """Angezeigte Zeilen in Anzeigereihenfolge (Grundlage für die spätere PDF-Ausgabe)."""
+        """Angezeigte Zeilen in Anzeigereihenfolge (Grundlage der PDF-Ausgabe)."""
         return [
             [self._raw_text(row, column) for column in range(len(self._columns))]
-            for row in range(self.table.rowCount())
-            if not self.table.isRowHidden(row)
+            for row in self._visible_row_numbers()
         ]
 
+    # PDF-Ausgabe
+
+    def pdf_table(self, title: str, subtitle_lines: Sequence[str] = ()) -> PdfTable:
+        """Die Tabelle „wie dargestellt“ (gefiltert, sortiert) für die PDF-Ausgabe."""
+        visible = self._visible_row_numbers()
+        columns = tuple(
+            PdfColumn(name, align_right=self._is_right_aligned(visible, index))
+            for index, name in enumerate(self._columns)
+        )
+        rows = tuple(PdfRow(tuple(cells)) for cells in self.visible_rows())
+        lines = (*subtitle_lines, *self._view_description(), f"{len(rows)} Zeilen")
+        return PdfTable(title=title, columns=columns, rows=rows, subtitle_lines=lines)
+
+    def pdf_button(
+        self,
+        title: str | Callable[[], str],
+        subtitle_lines: Callable[[], Sequence[str]] | None = None,
+    ) -> QPushButton | None:
+        """Schaltfläche „PDF“; `None`, wenn für den Anwender keine PDF-Ausgabe eingerichtet ist."""
+        exporter = None if self._preferences is None else self._preferences.exporter
+        if exporter is None:
+            return None
+        button = QPushButton("&PDF…")
+        button.setToolTip("Die Tabelle wie dargestellt (gefiltert, sortiert) als PDF ausgeben")
+
+        def export() -> None:
+            name = title if isinstance(title, str) else title()
+            lines = () if subtitle_lines is None else subtitle_lines()
+            exporter.export(self, self.pdf_table(name, lines))
+
+        button.clicked.connect(lambda _checked=False: export())
+        return button
+
     # Intern
+
+    def _visible_row_numbers(self) -> list[int]:
+        return [row for row in range(self.table.rowCount()) if not self.table.isRowHidden(row)]
+
+    def _is_right_aligned(self, rows: Sequence[int], column: int) -> bool:
+        if not rows:
+            return False
+        item = self.table.item(rows[0], column)
+        if item is None:
+            return False
+        alignment = item.textAlignment()
+        flags = int(getattr(alignment, "value", alignment))
+        return bool(flags & Qt.AlignmentFlag.AlignRight.value)
+
+    def _view_description(self) -> list[str]:
+        lines = []
+        filters = [
+            f"{name} enthält „{text}“"
+            for name, text in zip(self._columns, self._header.raw_texts(), strict=True)
+            if text
+        ]
+        if filters:
+            lines.append("Filter: " + "; ".join(filters))
+        if self._sort is not None:
+            direction = "aufsteigend" if self._sort.ascending else "absteigend"
+            lines.append(f"Sortierung: {self._sort.column} {direction}")
+        return lines
 
     def _raw_text(self, row: int, column: int) -> str:
         item = self.table.item(row, column)

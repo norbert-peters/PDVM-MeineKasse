@@ -2,7 +2,18 @@
 
 from datetime import date
 
-from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind, IncomeMode
+from meine_kasse.domain.enums import (
+    AccountType,
+    BookingType,
+    CostCenterKind,
+    DocumentType,
+    IncomeMode,
+)
+
+DOCUMENT_TYPE_LABELS = {
+    DocumentType.TABLE: "Tabelle",
+    DocumentType.REPORT: "Auswertung",
+}
 
 BOOKING_TYPE_LABELS = {
     BookingType.COST_CENTER_TO_ACCOUNT: "Kostenstelle → Konto",

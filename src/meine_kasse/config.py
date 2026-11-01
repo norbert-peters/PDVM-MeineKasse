@@ -1,15 +1,23 @@
 """Pfade und Einstellungen der Anwendung."""
 
 import os
+import sys
 from pathlib import Path
 
 DATABASE_ENV_VARIABLE = "MEINE_KASSE_DB"
 DATABASE_FILE_NAME = "meine_kasse.sqlite"
+PACKAGED_DATA_FOLDER = "Daten"
+DOCUMENTS_FOLDER = "Dokumente"
 
 
 def data_dir() -> Path:
-    """Ordner für Datenbank und Protokolle. Er liegt nie im Programmverzeichnis, damit ein
-    Update der Anwendung die Daten nicht berührt."""
+    """Ordner für Datenbank und Protokolle.
+
+    Im Installationspaket (PyInstaller) liegt er als Unterordner `Daten` neben der EXE. Jede
+    Kopie des Programmordners hat damit ihre eigene Datenbank. In der Entwicklung liegt er
+    unter %LOCALAPPDATA%."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / PACKAGED_DATA_FOLDER
     base = os.environ.get("LOCALAPPDATA")
     root = Path(base) if base else Path.home() / ".local" / "share"
     return root / "MeineKasse"
@@ -28,3 +36,10 @@ def log_dir() -> Path:
     if os.environ.get(DATABASE_ENV_VARIABLE):
         return database_path().parent / "logs"
     return data_dir() / "logs"
+
+
+def documents_dir() -> Path:
+    """Dokumentenarchiv (PDF-Ausgaben). Liegt bei überschriebener Datenbank neben ihr."""
+    if os.environ.get(DATABASE_ENV_VARIABLE):
+        return database_path().parent / DOCUMENTS_FOLDER
+    return data_dir() / DOCUMENTS_FOLDER

@@ -130,7 +130,15 @@ class PlanningDialog(QDialog):
         self.distribute_button = self._button("&Gleichmäßig verteilen", self._distribute_evenly)
         self.reserve_button = self._button("&Rückstellung maschinell", self._reset_reserve)
         self.reserve_button.setToolTip(
-            "Verwirft manuelle Rückstellungswerte der offenen Monate und berechnet sie neu."
+            "Verwirft manuelle Rückstellungswerte der offenen Monate und verteilt sie gleichmäßig "
+            "auf die offenen Monate. Geplante Zahlungen entlasten die Rückstellung im Plan."
+        )
+        self.target_button = self._button(
+            "Rückstellung auf &Zahlungsziel", self._reserve_to_payment_targets
+        )
+        self.target_button.setToolTip(
+            "Erhöht die Zuführungen vor den geplanten Zahlungen, sodass jede Zahlung zum "
+            "Zahlungsmonat gedeckt ist. Die Werte werden als manuell übernommen."
         )
         self.save_button = self._button("&Speichern", self._save)
         self.save_button.setDefault(True)
@@ -139,6 +147,7 @@ class PlanningDialog(QDialog):
         for button in (
             self.distribute_button,
             self.reserve_button,
+            self.target_button,
             self.reset_button,
             close_button,
         ):
@@ -170,6 +179,7 @@ class PlanningDialog(QDialog):
             self.reset_button,
             self.distribute_button,
             self.reserve_button,
+            self.target_button,
         ):
             buttons.addWidget(button)
         buttons.addStretch()
@@ -210,6 +220,7 @@ class PlanningDialog(QDialog):
             self.table,
             self.distribute_button,
             self.reserve_button,
+            self.target_button,
             self.save_button,
             self.reset_button,
         ):
@@ -247,7 +258,12 @@ class PlanningDialog(QDialog):
 
         self.base_edit.setEnabled(view.base_editable)
         self.carry_in_edit.setEnabled(view.reserve_carry_in_editable)
-        for button in (self.distribute_button, self.reserve_button, self.save_button):
+        for button in (
+            self.distribute_button,
+            self.reserve_button,
+            self.target_button,
+            self.save_button,
+        ):
             button.setEnabled(not view.year_closed)
         if view.year_closed:
             self.base_hint.setText(
@@ -519,6 +535,58 @@ class PlanningDialog(QDialog):
         if self._view is None:
             return
         self._manual -= set(self._open_months())
+        self._mark_dirty()
+        self._recompute()
+
+    def _reserve_to_payment_targets(self) -> None:
+        """Richtet die Zuführungen der offenen Monate auf die geplanten Zahlungen aus.
+
+        Die Werte werden als manuelle Zuführung übernommen und bleiben so bei weiteren Eingaben
+        stehen. Ein leeres Feld macht den Monat wieder maschinell (gleichmäßig).
+        """
+        view = self._view
+        cost_center_id = self.cost_center_combo.currentData()
+        if view is None or cost_center_id is None:
+            return
+        open_months = self._open_months()
+        self._manual -= set(open_months)
+        try:
+            base, carry_in, months = self._collect()
+            year = self.year_spin.value()
+            even = self._planning.preview_reserve(
+                cost_center_id,
+                year,
+                base_budget_cents=base,
+                carry_in_cents=carry_in,
+                months=months,
+            )
+            target = self._planning.preview_reserve(
+                cost_center_id,
+                year,
+                base_budget_cents=base,
+                carry_in_cents=carry_in,
+                months=months,
+                to_payment_targets=True,
+            )
+        except DomainError as error:
+            self._show_message(str(error), bad=True)
+            return
+        if all(target.reserve_plan[m] == even.reserve_plan[m] for m in open_months):
+            self._mark_dirty()
+            self._recompute()
+            self._show_message(
+                "Die gleichmäßige Rückstellung deckt die geplanten Zahlungen bereits.", good=True
+            )
+            return
+        self._busy = True
+        try:
+            for month in open_months:
+                item = self.table.item(month - 1, _RESERVE_COLUMN)
+                if item is not None:
+                    item.setText(format_euro(target.reserve_plan[month]))
+        finally:
+            self._busy = False
+        self._manual |= set(open_months)
         self._mark_dirty()
         self._recompute()
 

@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Protocol
 
+from meine_kasse.application.reporting.pdf_model import PdfTable
 from meine_kasse.domain.repositories import UnitOfWork
 
 UnitOfWorkFactory = Callable[[], UnitOfWork]
@@ -16,6 +17,12 @@ def utc_now() -> datetime:
 
 def local_today() -> date:
     return date.today()
+
+
+class PdfRenderer(Protocol):
+    """Schreibt eine Tabelle als PDF-Datei. Die Umsetzung liegt in der Infrastruktur."""
+
+    def render(self, table: PdfTable, target: Path) -> None: ...
 
 
 class PasswordHasher(Protocol):

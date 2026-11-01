@@ -28,8 +28,10 @@ Umgesetzt (erste Schritte):
 
 - Wiedereröffnen von Abschlüssen nur in umgekehrter Reihenfolge, mit Pflichtbegründung und dauerhafter Dokumentation (Historie im Abschlussdialog)
 - Anfangssalden (Jahresvortrag) der Konten: editierbar ohne Vorjahr bis zum Abschluss des Januars, sonst aus dem Vorjahr abgeleitet
+- PDF-Ausgabe und Dokumentenarchiv: Jede Tabelle (Buchungen, Stammdaten, Wiedereröffnungen) kann über die Schaltfläche „PDF…“ wie dargestellt (gefiltert, sortiert) ausgegeben werden. Die Dateien liegen im Dokumentenverzeichnis und sind im Menü „Auswertung → Dokumentenarchiv…“ durchsuch-, sortier-, prüf- und öffenbar
+- Auswertungen (Menü „Auswertung → Auswertung…“): eine allgemeine Auswertung über die Datenquellen Buchungen, Plan/Ist und Konten mit Spaltenauswahl, strukturierten Filtern, Sortierung, bis zu drei Gruppenebenen mit Zwischensummen, Gesamtsummen im Kopf, je Anwender speicherbar und als PDF ausgebbar
 
-Noch nicht umgesetzt: Auswertungen.
+Noch nicht umgesetzt: die Auswertungsspalten „erwarteter Kontostand“ und „Differenz“ (kommen mit dem Cash-Management, Architekturvorgabe 2.13).
 
 Ablauf eines Monats: Buchungen erfassen, Plan-Ist in der Planung ansehen, dann im Menü „Abschluss“ den aktuellen Buchungsmonat abschließen. Der Buchungsmonat rückt automatisch auf den Folgemonat. Sind alle zwölf Monate abgeschlossen, kann das Jahr abgeschlossen werden. Wer mitten im Jahr beginnt, setzt den Buchungsmonat in der Buchungssteuerung auf Januar und schließt die leeren Monate nacheinander ab.
 
@@ -45,7 +47,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m meine_kasse.main
 ```
 
-Die Datenbank liegt standardmäßig unter `%LOCALAPPDATA%\MeineKasse\meine_kasse.sqlite`. Mit der Umgebungsvariable `MEINE_KASSE_DB` kann ein anderer Pfad gesetzt werden. Beim Start wird das Schema automatisch migriert.
+Die Datenbank liegt standardmäßig unter `%LOCALAPPDATA%\MeineKasse\meine_kasse.sqlite`, die erzeugten PDF-Dateien unter `%LOCALAPPDATA%\MeineKasse\Dokumente`. Mit der Umgebungsvariable `MEINE_KASSE_DB` kann ein anderer Pfad gesetzt werden; das Dokumentenverzeichnis liegt dann neben der Datenbank. Beim Start wird das Schema automatisch migriert. Die Datensicherung (Datei → Datensicherung erstellen) schreibt die Datenbank als `<Name>.sqlite` und die Dokumente in den Ordner `<Name>_Dokumente` daneben.
 
 ## Installationspaket für den Testbetrieb (ohne Entwicklungsumgebung)
 

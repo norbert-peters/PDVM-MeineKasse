@@ -10,16 +10,26 @@ from dataclasses import dataclass, replace
 
 from meine_kasse.domain.entities import CostCenterPlan
 from meine_kasse.domain.repositories import UnitOfWork
-from meine_kasse.domain.services.reserve_rules import ReserveYear, compute_reserve_year
+from meine_kasse.domain.services.planning_rules import MONTHS
+from meine_kasse.domain.services.reserve_rules import (
+    ReserveYear,
+    compute_reserve_year,
+    effective_movement,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class YearReserve:
+    """`result` rechnet nur mit der Ist-Bewegung, `outlook` zusätzlich mit offenen Planzahlungen."""
+
     plan: CostCenterPlan
     carry_in_cents: int
     carry_in_derived: bool
     reserve_plan_total_cents: int
     result: ReserveYear
+    outlook: ReserveYear
+    reserve_plan: dict[int, int]
+    effective_movement: dict[int, int]
 
     @property
     def has_reserve(self) -> bool:
@@ -31,6 +41,8 @@ def project_cost_center(uow: UnitOfWork, cost_center_id: str, from_year: int) ->
     """Berechnet die Rückstellungen aller Planjahre ab `from_year` (ohne zu speichern)."""
     plans = list(uow.plans.plans_of_cost_center(cost_center_id))
     known_years = {plan.year for plan in plans}
+    closed_months = uow.closures.closed_months()
+    closed_years = uow.closures.closed_years()
     carry_out: dict[int, int] = {}
     results: list[YearReserve] = []
     for plan in plans:
@@ -39,17 +51,34 @@ def project_cost_center(uow: UnitOfWork, cost_center_id: str, from_year: int) ->
             continue
         derived = plan.year - 1 in known_years
         carry_in = carry_out[plan.year - 1] if derived else plan.reserve_carry_in_cents
-        reserve_plan = {
-            item.month: item.reserve_plan_cents
-            for item in uow.plans.monthly_plans(cost_center_id, plan.year)
-        }
+        monthly = uow.plans.monthly_plans(cost_center_id, plan.year)
+        reserve_plan = {item.month: item.reserve_plan_cents for item in monthly}
+        plan_cents = {item.month: item.plan_cents for item in monthly}
         movement = {
             actual.month: actual.movement_cents
             for actual in uow.plans.actuals_for_year(cost_center_id, plan.year)
         }
+        closed = (
+            set(MONTHS)
+            if plan.year in closed_years
+            else {month for month in MONTHS if (plan.year, month) in closed_months}
+        )
         result = compute_reserve_year(carry_in, reserve_plan, movement)
-        carry_out[plan.year] = result.carry_out_cents
-        results.append(YearReserve(plan, carry_in, derived, sum(reserve_plan.values()), result))
+        effective = effective_movement(plan_cents, movement, closed)
+        outlook = compute_reserve_year(carry_in, reserve_plan, effective)
+        carry_out[plan.year] = outlook.carry_out_cents
+        results.append(
+            YearReserve(
+                plan,
+                carry_in,
+                derived,
+                sum(reserve_plan.values()),
+                result,
+                outlook,
+                reserve_plan,
+                effective,
+            )
+        )
     return results
 
 
@@ -65,13 +94,13 @@ def apply_projection(uow: UnitOfWork, cost_center_id: str, from_year: int) -> bo
         plan = item.plan
         if (
             plan.reserve_carry_in_cents != item.carry_in_cents
-            or plan.reserve_carry_out_cents != item.result.carry_out_cents
+            or plan.reserve_carry_out_cents != item.outlook.carry_out_cents
         ):
             uow.plans.save_plan(
                 replace(
                     plan,
                     reserve_carry_in_cents=item.carry_in_cents,
-                    reserve_carry_out_cents=item.result.carry_out_cents,
+                    reserve_carry_out_cents=item.outlook.carry_out_cents,
                 )
             )
             changed = True
@@ -94,7 +123,7 @@ def projection_mismatch_cost_centers(uow: UnitOfWork, year: int) -> list[str]:
             if (
                 expected_release != stored_release
                 or item.plan.reserve_carry_in_cents != item.carry_in_cents
-                or item.plan.reserve_carry_out_cents != item.result.carry_out_cents
+                or item.plan.reserve_carry_out_cents != item.outlook.carry_out_cents
             ):
                 mismatched.append(cost_center_id)
     return mismatched

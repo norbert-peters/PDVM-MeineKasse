@@ -19,7 +19,7 @@ hiddenimports = collect_submodules("alembic") + collect_submodules("sqlalchemy.d
 # env.py der Migrationen wird zur Laufzeit als Datei geladen; PyInstaller sieht dessen Importe nicht
 hiddenimports += ["logging.config"]
 
-for package in ("argon2", "_argon2_cffi_bindings"):
+for package in ("argon2", "_argon2_cffi_bindings", "reportlab"):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
     binaries += package_binaries

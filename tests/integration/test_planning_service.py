@@ -106,8 +106,9 @@ def test_save_stores_budget_months_and_carry_over(
 
     view = planning.get_plan_view(world.cc_a, YEAR)
     assert view.base_budget_cents == 10000
-    # Der Vortrag ins Folgejahr wird berechnet: Vortrag + alle Zuführungen (nichts ausgegeben)
-    assert (view.reserve_carry_in_cents, view.reserve_carry_out_cents) == (700, 700 + 10000)
+    # Der Vortrag ins Folgejahr wird berechnet: Vortrag + Zuführungen - Planzahlungen, soweit
+    # die Rückstellung sie deckt (Monat 1: 1200 von 2000, Monat 3: 950 von 3000)
+    assert (view.reserve_carry_in_cents, view.reserve_carry_out_cents) == (700, 700 + 10000 - 2150)
     assert view.distributed_cents == 5000
     assert view.undistributed_cents == 5000
     first, second, third = view.months[:3]

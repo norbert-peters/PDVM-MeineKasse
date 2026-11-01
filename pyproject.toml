@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.13",
     "argon2-cffi>=23.1",
     "PySide6>=6.6",
+    "reportlab>=4.0",
 ]
 
 [project.optional-dependencies]
@@ -44,7 +45,7 @@ files = ["src"]
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["alembic.*"]
+module = ["alembic.*", "reportlab.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
