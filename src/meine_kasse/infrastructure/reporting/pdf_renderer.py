@@ -72,7 +72,10 @@ class ReportlabPdfRenderer:
     def _build_table(self, table: PdfTable, available: float) -> Table:
         body = ([table.total_row] if table.total_row else []) + list(table.rows)
         widths = _column_widths(table, body, available)
-        header = [self._cell(column.header, True, column.align_right) for column in table.columns]
+        header = [
+            self._cell(column.header, True, column.align_right, colors.white)
+            for column in table.columns
+        ]
         data = [header]
         commands: list[tuple[Any, ...]] = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.2, 0.3, 0.45)),
@@ -95,13 +98,17 @@ class ReportlabPdfRenderer:
         return result
 
     @staticmethod
-    def _cell(text: str, bold: bool, align_right: bool) -> Paragraph:
+    def _cell(
+        text: str, bold: bool, align_right: bool, text_color: Any = colors.black
+    ) -> Paragraph:
+        # TEXTCOLOR des TableStyle wirkt nicht auf Paragraphs, daher hier setzen.
         style = ParagraphStyle(
             "cell",
             fontName=_FONT_BOLD if bold else _FONT,
             fontSize=_FONT_SIZE,
             leading=_FONT_SIZE + 2,
             alignment=2 if align_right else 0,
+            textColor=text_color,
         )
         return Paragraph(escape(_printable(text)), style)
 
