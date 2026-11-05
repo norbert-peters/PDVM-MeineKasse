@@ -18,7 +18,7 @@ from meine_kasse.domain.identifiers import new_id
 from meine_kasse.domain.repositories import UnitOfWork
 from meine_kasse.domain.value_objects.iban import normalize_iban
 
-_COST_CENTER_FIELDS = ("number", "name", "valid_from", "notes")
+_COST_CENTER_FIELDS = ("number", "name", "valid_from", "notes", "always_in_plan_report")
 _ACCOUNT_FIELDS = ("number", "name", "account_type", "bank_name", "owner_name", "iban")
 _ACCOUNT_PROTECTED = ("iban",)
 
@@ -37,6 +37,7 @@ class MasterDataService:
         valid_from: date,
         kind: CostCenterKind = CostCenterKind.STANDARD,
         income_mode: IncomeMode | None = None,
+        always_in_plan_report: bool = False,
         notes: str = "",
         actor_id: str | None = None,
     ) -> str:
@@ -46,6 +47,7 @@ class MasterDataService:
             income_mode = income_mode or IncomeMode.PLAN
         elif income_mode is not None:
             raise ValidationError("Einen Einnahmemodus gibt es nur bei Einnahmen-Kostenstellen.")
+        _check_plan_report(kind, always_in_plan_report)
         cost_center = CostCenter(
             id=new_id(),
             name=name,
@@ -54,6 +56,7 @@ class MasterDataService:
             kind=kind,
             notes=notes.strip(),
             income_mode=income_mode,
+            always_in_plan_report=always_in_plan_report,
         )
         with self._uow_factory() as uow:
             if uow.cost_centers.get_by_number(number) is not None:
@@ -83,14 +86,26 @@ class MasterDataService:
         name: str,
         valid_from: date,
         notes: str = "",
+        always_in_plan_report: bool | None = None,
         actor_id: str | None = None,
     ) -> None:
         number = _required(number, "Die Kostenstellennummer")
         name = _required(name, "Der Kostenstellenname")
         with self._uow_factory() as uow:
             current = _get_cost_center(uow, cost_center_id)
+            flag = (
+                current.always_in_plan_report
+                if always_in_plan_report is None
+                else always_in_plan_report
+            )
+            _check_plan_report(current.kind, flag)
             updated = replace(
-                current, number=number, name=name, valid_from=valid_from, notes=notes.strip()
+                current,
+                number=number,
+                name=name,
+                valid_from=valid_from,
+                notes=notes.strip(),
+                always_in_plan_report=flag,
             )
             changes = describe_changes(current, updated, _COST_CENTER_FIELDS)
             if changes is None:
@@ -249,6 +264,13 @@ class MasterDataService:
         with self._uow_factory() as uow:
             items = uow.accounts.list_all()
         return [item for item in items if include_inactive or item.is_active]
+
+
+def _check_plan_report(kind: CostCenterKind, always_in_plan_report: bool) -> None:
+    if always_in_plan_report and kind is CostCenterKind.INCOME:
+        raise ValidationError(
+            "Einnahmen-Kostenstellen erscheinen in der Einnahmenauswertung, nicht in Plan/Ist."
+        )
 
 
 def _required(value: str, label: str) -> str:

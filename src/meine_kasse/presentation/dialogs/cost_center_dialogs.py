@@ -3,6 +3,7 @@ from datetime import date
 
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDateEdit,
     QLabel,
@@ -51,12 +52,18 @@ class CostCenterEditDialog(MasterEditDialog):
             self.mode_combo.addItem(mode_label, mode.value)
         self.notes_edit = QPlainTextEdit()
         self.notes_edit.setFixedHeight(80)
+        self.plan_report_check = QCheckBox("In der Plan/Ist-Auswertung immer ausgeben")
+        self.plan_report_check.setToolTip(
+            "Auch ohne Plan und ohne Buchung erscheint die Kostenstelle in der Auswertung, "
+            "z. B. wenn sie über die Haushaltsreserve bedient wird."
+        )
 
         self.form.addRow("Nummer:", self.number_edit)
         self.form.addRow("Name:", self.name_edit)
         self.form.addRow("Kostenstelle ab:", self.valid_from_edit)
         self.form.addRow("Art:", self.kind_combo)
         self.form.addRow("Einnahme verfügbar:", self.mode_combo)
+        self.form.addRow("Auswertung:", self.plan_report_check)
         self.form.addRow("Bemerkungen:", self.notes_edit)
         self.kind_combo.currentIndexChanged.connect(lambda _index: self._sync_mode())
 
@@ -71,6 +78,7 @@ class CostCenterEditDialog(MasterEditDialog):
             self.kind_combo.setEnabled(False)
             if current.income_mode is not None:
                 self.mode_combo.setCurrentIndex(self.mode_combo.findData(current.income_mode.value))
+            self.plan_report_check.setChecked(current.always_in_plan_report)
             self.notes_edit.setPlainText(current.notes)
             hint = QLabel("Die Art kann nach dem Anlegen nicht mehr geändert werden.")
             hint.setStyleSheet("color: #606060;")
@@ -82,11 +90,15 @@ class CostCenterEditDialog(MasterEditDialog):
         is_income = self.kind_combo.currentData() == CostCenterKind.INCOME.value
         self.mode_combo.setEnabled(is_income and self._cost_center_id is None)
         self.form.setRowVisible(self.mode_combo, is_income)
+        self.form.setRowVisible(self.plan_report_check, not is_income)
+        if is_income:
+            self.plan_report_check.setChecked(False)
 
     def save(self) -> None:
         qdate = self.valid_from_edit.date()
         valid_from = date(qdate.year(), qdate.month(), qdate.day())
         notes = self.notes_edit.toPlainText()
+        always_in_plan_report = self.plan_report_check.isChecked()
         if self._cost_center_id is None:
             kind = CostCenterKind(self.kind_combo.currentData())
             self._service.create_cost_center(
@@ -99,6 +111,7 @@ class CostCenterEditDialog(MasterEditDialog):
                     if kind is CostCenterKind.INCOME
                     else None
                 ),
+                always_in_plan_report=always_in_plan_report,
                 notes=notes,
                 actor_id=self._actor_id,
             )
@@ -109,6 +122,7 @@ class CostCenterEditDialog(MasterEditDialog):
                 name=self.name_edit.text(),
                 valid_from=valid_from,
                 notes=notes,
+                always_in_plan_report=always_in_plan_report,
                 actor_id=self._actor_id,
             )
 

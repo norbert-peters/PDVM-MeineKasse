@@ -51,12 +51,16 @@ class CostCenterModel(IdNameMixin, TimestampMixin, Base):
         CheckConstraint(
             "(kind = 'INCOME') = (income_mode IS NOT NULL)", name="income_mode_matches_kind"
         ),
+        CheckConstraint(
+            "NOT always_in_plan_report OR kind <> 'INCOME'", name="plan_report_not_for_income"
+        ),
     )
 
     number: Mapped[str] = mapped_column(String(20))
     valid_from: Mapped[date] = mapped_column(Date)
     kind: Mapped[str] = mapped_column(String(20), default=CostCenterKind.STANDARD.value)
     income_mode: Mapped[str | None] = mapped_column(String(10), default=None)
+    always_in_plan_report: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 

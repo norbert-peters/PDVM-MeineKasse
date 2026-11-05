@@ -41,6 +41,15 @@ class LiquidityMonth:
     reserve_cents: int
     payment_cents: int
     is_closed: bool
+    # Nur zur Anzeige: alle Zahlungen vom Bankkonto, auch die aus Rückstellungen entlasteten.
+    bank_outflow_cents: int = 0
+    # Nur zur Anzeige: Rückfluss, also die aus den Rückstellungen entlasteten Zahlungen.
+    reserve_release_cents: int = 0
+
+    @property
+    def reserve_movement_cents(self) -> int:
+        """Nur zur Anzeige: Zuführung − Rückfluss. Positiv heißt: Geld wird zurückgelegt."""
+        return self.reserve_cents - self.reserve_release_cents
 
     @property
     def need_cents(self) -> int:

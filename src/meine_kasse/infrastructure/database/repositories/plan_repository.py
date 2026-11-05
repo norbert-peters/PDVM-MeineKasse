@@ -21,6 +21,7 @@ def _plan_to_entity(model: CostCenterPlanModel) -> CostCenterPlan:
         budget_transfer_cents=model.budget_transfer_cents,
         reserve_carry_in_cents=model.reserve_carry_in_cents,
         reserve_carry_out_cents=model.reserve_carry_out_cents,
+        reserve_carry_in_is_manual=model.reserve_carry_in_is_manual,
     )
 
 
@@ -69,6 +70,7 @@ class SqlPlanRepository:
         model.budget_transfer_cents = plan.budget_transfer_cents
         model.reserve_carry_in_cents = plan.reserve_carry_in_cents
         model.reserve_carry_out_cents = plan.reserve_carry_out_cents
+        model.reserve_carry_in_is_manual = plan.reserve_carry_in_is_manual
         self._session.flush()
 
     def list_plans(self) -> Sequence[CostCenterPlan]:

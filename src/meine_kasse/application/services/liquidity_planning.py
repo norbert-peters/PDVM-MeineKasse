@@ -50,6 +50,8 @@ def build_liquidity_view(uow: UnitOfWork, year: int) -> LiquidityView:
     income = dict.fromkeys(MONTHS, 0)
     reserve = dict.fromkeys(MONTHS, 0)
     payment = dict.fromkeys(MONTHS, 0)
+    bank_outflow = dict.fromkeys(MONTHS, 0)
+    reserve_release = dict.fromkeys(MONTHS, 0)
     closed_months = uow.closures.closed_months()
     year_closed = year in uow.closures.closed_years()
     closed = {m: year_closed or (year, m) in closed_months for m in MONTHS}
@@ -71,11 +73,21 @@ def build_liquidity_view(uow: UnitOfWork, year: int) -> LiquidityView:
                 for month in MONTHS:
                     reserve[month] += reserve_year.reserve_plan.get(month, 0)
                     payment[month] += uncovered[month]
+                    bank_outflow[month] += reserve_year.effective_movement.get(month, 0)
+                    reserve_release[month] += reserve_year.outlook.release.get(month, 0)
 
     return LiquidityView(
         year,
         tuple(
-            LiquidityMonth(month, income[month], reserve[month], payment[month], closed[month])
+            LiquidityMonth(
+                month,
+                income[month],
+                reserve[month],
+                payment[month],
+                closed[month],
+                bank_outflow[month],
+                reserve_release[month],
+            )
             for month in MONTHS
         ),
     )

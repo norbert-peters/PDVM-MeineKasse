@@ -3,7 +3,8 @@
 Die Entlastung je Monat (`reserve_actual_cents`) und der Vortrag (`reserve_carry_*_cents`) sind
 Projektionen. Sie werden aus Zuführungen und Ist-Bewegung berechnet und sind jederzeit neu
 aufbaubar. Der Vortrag eines Jahres ist der Endbestand des Vorjahres, sofern die Kostenstelle
-dort einen Plan hat. Sonst ist er manuell erfasst.
+dort einen Plan hat und der Vortrag nicht von Hand überschrieben wurde. Sonst ist er manuell
+erfasst.
 """
 
 from dataclasses import dataclass, replace
@@ -49,7 +50,7 @@ def project_cost_center(uow: UnitOfWork, cost_center_id: str, from_year: int) ->
         if plan.year < from_year:
             carry_out[plan.year] = plan.reserve_carry_out_cents
             continue
-        derived = plan.year - 1 in known_years
+        derived = plan.year - 1 in known_years and not plan.reserve_carry_in_is_manual
         carry_in = carry_out[plan.year - 1] if derived else plan.reserve_carry_in_cents
         monthly = uow.plans.monthly_plans(cost_center_id, plan.year)
         reserve_plan = {item.month: item.reserve_plan_cents for item in monthly}

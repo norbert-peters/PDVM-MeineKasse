@@ -22,6 +22,7 @@ def _to_entity(model: CostCenterModel) -> CostCenter:
         notes=model.notes,
         is_active=model.is_active,
         income_mode=None if model.income_mode is None else IncomeMode(model.income_mode),
+        always_in_plan_report=model.always_in_plan_report,
     )
 
 
@@ -38,6 +39,7 @@ class SqlCostCenterRepository:
                 valid_from=cost_center.valid_from,
                 kind=cost_center.kind.value,
                 income_mode=_mode_value(cost_center),
+                always_in_plan_report=cost_center.always_in_plan_report,
                 notes=cost_center.notes,
                 is_active=cost_center.is_active,
             )
@@ -53,6 +55,7 @@ class SqlCostCenterRepository:
         model.valid_from = cost_center.valid_from
         model.kind = cost_center.kind.value
         model.income_mode = _mode_value(cost_center)
+        model.always_in_plan_report = cost_center.always_in_plan_report
         model.notes = cost_center.notes
         model.is_active = cost_center.is_active
         self._session.flush()

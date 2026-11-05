@@ -106,9 +106,12 @@ BOOKINGS = SourceDef(
 PLAN_ACTUAL = SourceDef(
     ReportSource.PLAN_ACTUAL,
     "Plan/Ist",
-    "Eine Zeile je Kostenstelle und Planmonat (Kostenstellen mit Plan)",
+    "Eine Zeile je Kostenstelle und Planmonat (Kostenstellen mit Plan oder mit Kennzeichen "
+    "„immer ausgeben“, Leerzeilen über die Zeilenart filterbar)",
     (
         ColumnDef("cost_center", "Kostenstelle", _TEXT, groupable=True),
+        ColumnDef("planning", "Planung", _TEXT, groupable=True),
+        ColumnDef("row_kind", "Zeilenart", _TEXT, groupable=True),
         ColumnDef("year", "Jahr", _INT, groupable=True),
         ColumnDef("month", "Monat", _INT, groupable=True),
         ColumnDef("status", "Status", _TEXT, groupable=True),
@@ -140,8 +143,30 @@ ACCOUNTS = SourceDef(
     ),
 )
 
+INCOME = SourceDef(
+    ReportSource.INCOME,
+    "Einnahmen",
+    "Eine Zeile je Einnahmen-Kostenstelle und Planmonat",
+    (
+        ColumnDef("cost_center", "Kostenstelle", _TEXT, groupable=True),
+        ColumnDef("year", "Jahr", _INT, groupable=True),
+        ColumnDef("month", "Monat", _INT, groupable=True),
+        ColumnDef("status", "Status", _TEXT, groupable=True),
+        ColumnDef("availability", "Verfügbarkeit", _TEXT, groupable=True),
+        ColumnDef("plan", "Erwartet (Plan)", _MONEY, _ADD),
+        ColumnDef("debit", "Soll", _MONEY, _ADD),
+        ColumnDef("credit", "Haben", _MONEY, _ADD),
+        ColumnDef("realized", "Ist-Einnahme", _MONEY, _ADD),
+        ColumnDef("deviation", "Abweichung", _MONEY, _ADD),
+        ColumnDef("open_expected", "Noch erwartet", _MONEY, _ADD),
+        ColumnDef("liquidity", "Für Liquidität", _MONEY, _ADD),
+        ColumnDef("passed_on", "Weitergegeben", _MONEY),
+        ColumnDef("free", "Noch umbuchbar", _MONEY),
+    ),
+)
+
 SOURCES: dict[ReportSource, SourceDef] = {
-    source.source: source for source in (BOOKINGS, PLAN_ACTUAL, ACCOUNTS)
+    source.source: source for source in (BOOKINGS, PLAN_ACTUAL, ACCOUNTS, INCOME)
 }
 
 

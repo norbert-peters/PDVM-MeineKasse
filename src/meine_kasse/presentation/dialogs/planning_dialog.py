@@ -94,6 +94,7 @@ class PlanningDialog(QDialog):
         self._error = ""
         self._info = ""
         self._over_text = ""
+        self._carry_auto = False
 
         self.cost_center_combo = QComboBox()
         for cost_center in planning.list_planned_cost_centers():
@@ -108,6 +109,11 @@ class PlanningDialog(QDialog):
         self.base_hint = QLabel()
         self.base_hint.setStyleSheet(_MUTED)
         self.carry_in_edit = QLineEdit()
+        self.carry_in_auto_button = self._button("Vortrag &automatisch", self._carry_in_to_auto)
+        self.carry_in_auto_button.setAutoDefault(False)
+        self.carry_in_auto_button.setToolTip(
+            "Nimmt die Überschreibung zurück: Der Vortrag folgt wieder dem Vorjahr."
+        )
         self.carry_in_hint = QLabel()
         self.carry_in_hint.setStyleSheet(_MUTED)
         self.carry_out_label = QLabel()
@@ -168,7 +174,10 @@ class PlanningDialog(QDialog):
         summary.addRow("Noch nicht verteilt:", self.undistributed_label)
         summary.addRow("Ist-Bewegung (Soll − Haben):", self.movement_label)
         summary.addRow("Haushaltsrest:", self.remaining_label)
-        summary.addRow("Rückstellung Vortrag (Vorjahr):", self.carry_in_edit)
+        carry_in_row = QHBoxLayout()
+        carry_in_row.addWidget(self.carry_in_edit, 1)
+        carry_in_row.addWidget(self.carry_in_auto_button)
+        summary.addRow("Rückstellung Vortrag (Vorjahr):", carry_in_row)
         summary.addRow("", self.carry_in_hint)
         summary.addRow("Rückstellung zugeführt (Jahr):", self.reserve_total_label)
         summary.addRow("Rückstellung Vortrag (Folgejahr):", self.carry_out_label)
@@ -195,8 +204,8 @@ class PlanningDialog(QDialog):
         self.cost_center_combo.currentIndexChanged.connect(lambda _index: self._on_selection())
         self.year_spin.valueChanged.connect(lambda _value: self._on_selection())
         self.table.itemChanged.connect(self._on_item_changed)
-        for edit in (self.base_edit, self.carry_in_edit):
-            edit.textEdited.connect(lambda _text: self._on_header_edited())
+        self.base_edit.textEdited.connect(lambda _text: self._on_header_edited())
+        self.carry_in_edit.textEdited.connect(lambda _text: self._on_carry_in_edited())
 
         if self.cost_center_combo.count() == 0:
             self.message_label.setText("Es gibt keine aktive Kostenstelle mit Plan.")
@@ -217,6 +226,7 @@ class PlanningDialog(QDialog):
         for widget in (
             self.base_edit,
             self.carry_in_edit,
+            self.carry_in_auto_button,
             self.table,
             self.distribute_button,
             self.reserve_button,
@@ -241,6 +251,7 @@ class PlanningDialog(QDialog):
         self._manual = {m.month for m in view.months if m.reserve_is_manual}
         self._modes = {m.month: m.plan_mode for m in view.months}
         self._notices = view.reserve_notices
+        self._carry_auto = False
         self._error = self._info = ""
         self._populate(view)
         self._dirty = False
@@ -258,6 +269,9 @@ class PlanningDialog(QDialog):
 
         self.base_edit.setEnabled(view.base_editable)
         self.carry_in_edit.setEnabled(view.reserve_carry_in_editable)
+        self.carry_in_auto_button.setEnabled(
+            view.reserve_carry_in_editable and view.reserve_carry_in_derivable
+        )
         for button in (
             self.distribute_button,
             self.reserve_button,
@@ -269,18 +283,39 @@ class PlanningDialog(QDialog):
             self.base_hint.setText(
                 "Das Jahr ist abgeschlossen. Es kann nichts mehr geändert werden."
             )
-        elif view.planning_enabled:
+        elif view.planning_enabled and not view.is_future_year:
             self.base_hint.setText(
                 "Bei aktiver Planung ist der Ansatz fix. Änderungen nur per Ansatzumbuchung."
+            )
+        elif view.planning_enabled:
+            self.base_hint.setText(
+                "Folgejahr des Buchungsjahres: Der Ansatz kann vorab geplant werden."
             )
         else:
             self.base_hint.setText(
                 "Die Planung ist nicht aktiv, der Ansatz kann noch geändert werden."
             )
-        if view.reserve_carry_in_editable:
-            self.carry_in_hint.setText("Kein Vorjahresplan: Der Vortrag wird von Hand erfasst.")
+        if not view.reserve_carry_in_derivable:
+            if view.reserve_carry_in_editable:
+                self.carry_in_hint.setText("Kein Vorjahresplan: Der Vortrag wird von Hand erfasst.")
+            else:
+                self.carry_in_hint.setText("Der Vortrag ist fix (Januar abgeschlossen).")
+        elif not view.reserve_carry_in_editable:
+            self.carry_in_hint.setText(
+                "Der Vortrag ist fix (Januar abgeschlossen)."
+                if view.reserve_carry_in_manual
+                else "Der Vortrag wird aus dem Vorjahr übernommen."
+            )
+        elif view.reserve_carry_in_manual:
+            self.carry_in_hint.setText(
+                "Der Vortrag wurde von Hand überschrieben und ist bis zum Abschluss des Januars "
+                "änderbar. Mit »Vortrag automatisch« folgt er wieder dem Vorjahr."
+            )
         else:
-            self.carry_in_hint.setText("Der Vortrag wird aus dem Vorjahr übernommen.")
+            self.carry_in_hint.setText(
+                "Prognose aus dem Vorjahr. Sie kann bis zum Abschluss des Januars überschrieben "
+                "werden und ist danach fix."
+            )
         self.transfer_label.setText(format_euro(view.budget_transfer_cents))
         self.movement_label.setText(format_euro(view.movement_cents))
         self.reserve_total_label.setText(
@@ -358,6 +393,14 @@ class PlanningDialog(QDialog):
         self._mark_dirty()
         self._recompute()
 
+    def _on_carry_in_edited(self) -> None:
+        self._carry_auto = False
+        self._on_header_edited()
+
+    def _carry_in_to_auto(self) -> None:
+        self._carry_auto = True
+        self._on_header_edited()
+
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         if self._busy:
             return
@@ -391,6 +434,7 @@ class PlanningDialog(QDialog):
                 base_budget_cents=base,
                 carry_in_cents=carry_in,
                 months=months,
+                carry_in_automatic=self._carry_auto,
             )
         except DomainError as error:
             self._show_message(str(error), bad=True)
@@ -422,7 +466,7 @@ class PlanningDialog(QDialog):
                     item.setText(text)
                 self._style_reserve_cells(index, manual and not closed)
             self.carry_out_label.setText(format_euro(preview.carry_out_cents))
-            if not self.carry_in_edit.isEnabled():
+            if not self.carry_in_edit.isEnabled() or self._carry_auto:
                 self.carry_in_edit.setText(format_euro(preview.carry_in_cents))
         finally:
             self._busy = False
@@ -559,6 +603,7 @@ class PlanningDialog(QDialog):
                 base_budget_cents=base,
                 carry_in_cents=carry_in,
                 months=months,
+                carry_in_automatic=self._carry_auto,
             )
             target = self._planning.preview_reserve(
                 cost_center_id,
@@ -567,6 +612,7 @@ class PlanningDialog(QDialog):
                 carry_in_cents=carry_in,
                 months=months,
                 to_payment_targets=True,
+                carry_in_automatic=self._carry_auto,
             )
         except DomainError as error:
             self._show_message(str(error), bad=True)
@@ -603,6 +649,7 @@ class PlanningDialog(QDialog):
                 reserve_carry_in_cents=carry_in,
                 months=months,
                 actor_id=self._actor_id,
+                carry_in_automatic=self._carry_auto,
             )
         except DomainError as error:
             self._show_message(str(error), bad=True)

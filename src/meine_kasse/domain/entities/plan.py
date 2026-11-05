@@ -5,7 +5,11 @@ from meine_kasse.domain.enums import PlanMode
 
 @dataclass(frozen=True, slots=True)
 class CostCenterPlan:
-    """Jahresplan. Der wirksame Ansatz ist Basisansatz + Ansatzumbuchungen."""
+    """Jahresplan. Der wirksame Ansatz ist Basisansatz + Ansatzumbuchungen.
+
+    `reserve_carry_in_is_manual` kennzeichnet einen von Hand überschriebenen Vortrag, obwohl es
+    einen Vorjahresplan gibt. Ohne Kennzeichnung folgt der Vortrag dem Vorjahr.
+    """
 
     id: str
     cost_center_id: str
@@ -14,6 +18,7 @@ class CostCenterPlan:
     budget_transfer_cents: int = 0
     reserve_carry_in_cents: int = 0
     reserve_carry_out_cents: int = 0
+    reserve_carry_in_is_manual: bool = False
 
     @property
     def effective_budget_cents(self) -> int:

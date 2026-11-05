@@ -3,20 +3,22 @@
 import json
 from collections.abc import Sequence
 
-from meine_kasse.application.ports import UnitOfWorkFactory
+from meine_kasse.application.ports import Today, UnitOfWorkFactory, local_today
 from meine_kasse.application.reporting.catalog import SOURCES, SourceDef
 from meine_kasse.application.reporting.engine import ReportResult, run_report, validate_definition
 from meine_kasse.application.reporting.sources import (
     Row,
     account_rows,
     booking_rows,
+    income_rows,
     plan_actual_rows,
     plan_targets,
 )
+from meine_kasse.application.services.booking_control_service import load_or_create_control
 from meine_kasse.application.services.document_service import DocumentService, DocumentView
 from meine_kasse.application.services.planning_service import PlanningService
 from meine_kasse.domain.entities import AuditEntry, ReportDefinition
-from meine_kasse.domain.enums import DocumentType, ReportSource
+from meine_kasse.domain.enums import CostCenterKind, DocumentType, ReportSource
 from meine_kasse.domain.errors import NotFoundError, ValidationError
 
 _MAX_NAME_LENGTH = 200
@@ -28,10 +30,12 @@ class ReportService:
         uow_factory: UnitOfWorkFactory,
         planning: PlanningService,
         documents: DocumentService,
+        today: Today = local_today,
     ) -> None:
         self._uow_factory = uow_factory
         self._planning = planning
         self._documents = documents
+        self._today = today
 
     @staticmethod
     def sources() -> Sequence[SourceDef]:
@@ -113,12 +117,22 @@ class ReportService:
     def _rows(self, source: ReportSource) -> Sequence[Row]:
         if source is ReportSource.PLAN_ACTUAL:
             with self._uow_factory() as uow:
-                targets = plan_targets(uow)
+                control = load_or_create_control(uow, self._today)
+                targets = plan_targets(uow, control.current_year)
             # Die Planansichten öffnen eigene Transaktionen und folgen deshalb nach der ersten.
             views = [
-                (cost_center, self._planning.get_plan_view(cost_center.id, year))
+                (
+                    cost_center,
+                    self._planning.get_plan_view(cost_center.id, year)
+                    if cost_center.kind is CostCenterKind.STANDARD
+                    else self._planning.get_unplanned_view(cost_center.id, year),
+                )
                 for cost_center, year in targets
             ]
             return plan_actual_rows(views)
         with self._uow_factory() as uow:
-            return booking_rows(uow) if source is ReportSource.BOOKINGS else account_rows(uow)
+            if source is ReportSource.BOOKINGS:
+                return booking_rows(uow)
+            if source is ReportSource.INCOME:
+                return income_rows(uow)
+            return account_rows(uow)

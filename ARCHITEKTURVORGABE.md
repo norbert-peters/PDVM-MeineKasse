@@ -161,7 +161,7 @@ Die Summe aller Ansätze bleibt dadurch unverändert. Ein negativer Betrag kehrt
 
 | Änderung | Ort | Begründung |
 | --- | --- | --- |
-| Erstmalige Festlegung des Jahresansatzes | Planung, solange die Planung nicht aktiviert ist | Danach ist der Haushaltsansatz fix |
+| Erstmalige Festlegung des Jahresansatzes | Planung, solange die Planung nicht aktiviert ist; für **Folgejahre des Buchungsjahres** auch bei aktiver Planung (Vorabplanung) | Ab dem Jahr, das Buchungsjahr wird (oder ist), ist der Haushaltsansatz fix |
 | Höhe des Jahresansatzes einer Kostenstelle | nur über Ansatzumbuchung | Gesamthaushalt bleibt konstant, Änderung ist belegt, datiert und signiert |
 | Verteilung auf Monate und unregelmäßige Beträge innerhalb des Jahresansatzes, Zuführungen zur Rückstellung | Planung (Planungsdialog), ohne Buchung | Gesamtsumme ändert sich nicht, Vorgang ist reine Planungsarbeit |
 
@@ -245,7 +245,7 @@ Regeln:
 5. **Entlastung bei Buchung:** Eine Ist-Bewegung der Kostenstelle entlastet die Rückstellung nur bis zum verfügbaren Bestand (Vortrag + Zuführungen bis einschließlich Planmonat − bisherige Entlastungen). Ist der Bestand zu gering, erscheint nach dem Speichern ein Hinweis mit dem Fehlbetrag; die Buchung wird dennoch ausgeführt. Ohne Rückstellung im Planjahr (z. B. bei Planung in allen Monaten) gibt es keinen Hinweis. Die Buchungsmaske zeigt den Rückstellungsbestand bis zum Planmonat.
 6. **Berechnung nach Monatssummen:** Die Entlastung wird je Planmonat aus der Monatssumme der Ist-Bewegung berechnet, nicht aus der Reihenfolge einzelner Buchungen. Damit ist sie jederzeit aus den Buchungen neu aufbaubar (Entwicklungsregel 3.11). Eine negative Monatsbewegung (Erstattung) gibt Entlastung höchstens bis zur bisherigen Entlastung zurück.
 7. **Ansatzsperre:** Unverändert (2.7). Die Rückstellung unterteilt den Jahresansatz und erweitert ihn nicht. Zuführung und Planentlastung sind Planung und berühren Ist, Haushaltsrest und Konten nicht.
-8. **Jahreswechsel:** Der nicht ausgeglichene Bestand (Endbestand Dezember) ist der Vortrag ins Folgejahr. Hat die Kostenstelle im Vorjahr einen Plan, wird der Vortrag von dort übernommen und ist nicht editierbar. Ohne Vorjahresplan wird er von Hand erfasst, solange der Januar des Jahres nicht abgeschlossen ist. Der Vortrag ist eine Projektion und aus den signierten Buchungen und Plänen jederzeit ableitbar; eine eigene Signatur gibt es nicht. Die Abschlussprüfung vergleicht gespeicherte Entlastung und Vorträge mit der Neuberechnung und bricht bei Abweichung ab (Projektionen neu aufbauen).
+8. **Jahreswechsel:** Der nicht ausgeglichene Bestand (Endbestand Dezember) ist der Vortrag ins Folgejahr. Hat die Kostenstelle im Vorjahr einen Plan, ist der Vortrag zunächst die **Prognose** aus dem Vorjahr (laufend nachgeführt). Er kann bis zum Abschluss des Januars des Jahres von Hand überschrieben (`reserve_carry_in_is_manual`) und über „Vortrag automatisch“ wieder auf die Prognose zurückgesetzt werden; mit Abschluss des Januars ist er fix. Ohne Vorjahresplan wird er von Hand erfasst, solange der Januar des Jahres nicht abgeschlossen ist. Der Vortrag ist eine Projektion und aus den signierten Buchungen und Plänen jederzeit ableitbar; eine eigene Signatur gibt es nicht. Die Abschlussprüfung vergleicht gespeicherte Entlastung und Vorträge mit der Neuberechnung und bricht bei Abweichung ab (Projektionen neu aufbauen).
 9. **Reale Deckung:** Das Geld für Rückstellungen wird manuell per Umbuchung (2.4a) auf das Betriebsmittelkonto bewegt (2.13). Das System bucht dies nicht automatisch.
 10. **Auslöser der Berechnung:** Zuführungen werden beim Speichern der Planung berechnet (im Dialog als Live-Vorschau). Entlastung und Vorträge werden bei jeder Buchung, Änderung, Löschung und Stornierung in derselben Transaktion fortgeschrieben, über alle folgenden Planjahre hinweg, sowie beim Neuaufbau der Projektionen und beim Programmstart.
 11. **Bestand aus früheren Versionen:** Bisher von Hand erfasste Zuführungen (> 0) gelten nach der Migration als manuell und bleiben unverändert.
@@ -338,6 +338,7 @@ Mit `INCOME` als Empfänger sind Ansatzumbuchungen nicht möglich, ebenso nicht 
 | Buchungen | Buchung | Buchungs-/Entstehungsdatum, Kostenstelle, Konto, Gegenkonto, Buchungsart, Soll, Haben, Text, Händler, Status (offen/abgeschlossen, Storno), Anwender |
 | Plan/Ist | Kostenstelle × Planmonat | Kostenstelle, Soll, Haben, Ist-Bewegung, Monatsplan, Abweichung, Ansatz, Restansatz, Zuführung, Entlastung, Rückstellungsbestand |
 | Konten | Konto | Konto, Art, Anfangssaldo, Soll, Haben, Saldo, erwarteter Kontostand, Differenz |
+| Einnahmen | Einnahmen-Kostenstelle × Planmonat | Kostenstelle, Verfügbarkeit, erwartet (Plan), Ist-Einnahme, Abweichung, noch erwartet, für Liquidität, weitergegeben, noch umbuchbar |
 
 2. Jede Spalte ist `ADDITIVE` (summierbar: Soll, Haben, Bewegung, Monatsplan, Zuführung, Entlastung) oder `NON_ADDITIVE` (Bestands- und Jahreswerte: Ansatz, Restansatz, Rückstellungsbestand, Saldo). Gesamt- und Gruppensummen summieren nur `ADDITIVE`-Spalten; bei `NON_ADDITIVE` wird je Gruppe der Wert der letzten Zeile bzw. nichts ausgewiesen.
 3. Spalten sind frei ein- und ausblendbar. Eine Auswertung speichert Name, Datenquelle, Spaltenauswahl und -reihenfolge, Filter, Sortierung und Gruppierung je Anwender (`report_definitions`).
@@ -350,6 +351,9 @@ Mit `INCOME` als Empfänger sind Ansatzumbuchungen nicht möglich, ebenso nicht 
    - Sortier- und Gruppierungsspalten müssen in der Spaltenauswahl enthalten sein; gruppiert werden kann nur nach Kategoriespalten (Datum, Text, Jahr, Monat), höchstens in drei Ebenen. Die Gruppenwerte stehen in der Zelle der Gruppierungsspalte („Kostenstelle: 100 Lebensmittel“, „Summe 100 Lebensmittel“). Bei „nur Summen“ entfallen die Zeilen darunter.
    - In Gruppensummen zeigen `NON_ADDITIVE`-Beträge (Ansatz, Restansatz, Saldo, Rückstellungsbestand) den Wert der letzten Zeile der Gruppe, in der Gesamtzeile erscheint nichts.
    - Plan/Ist umfasst Kostenstellen der Art `STANDARD` mit Plan; Monate ganz ohne Plan, Ist und Rückstellungswerte entfallen. Der Restansatz ist der wirksame Jahresansatz abzüglich der kumulierten Ist-Bewegung bis zum Monat.
+   - **Kennzeichen „immer ausgeben“** (`cost_centers.always_in_plan_report`, bei `STANDARD` und `WITHOUT_PLAN`, jederzeit änderbar, nicht bei `INCOME`): Solche Kostenstellen erscheinen in Plan/Ist auch ohne Plan, und zwar in allen Jahren mit Ist-Buchungen sowie stets im aktuellen und im nächsten Planjahr (ab ihrem Gültigkeitsjahr); ohne Plan und Buchung als eine Zeile ohne Monat mit Nullwerten. Die Spalte „Zeilenart“ (`Mit Werten` / `Ohne Werte`) erlaubt, diese Leerzeilen per Filter auszuschließen oder gezielt auszugeben (Übersicht noch nicht beplanter Kostenstellen). Sie sind für Ausgaben gedacht, die im Blick sind, aber bei Bedarf über die Haushaltsreserve bedient werden. Bei `WITHOUT_PLAN` bleiben Ansatz, Restansatz und Rückstellungsbestand leer. Die Spalte „Planung“ (`Mit Plan` / `Ohne Plan`) erlaubt Filter und Gruppierung.
+   - Einnahmen: je Einnahmen-Kostenstelle und Planmonat mit Plan oder Ist. „Ist-Einnahme“ ist Haben − Soll, „Abweichung“ Ist − Plan, „Noch erwartet“ je Monat Plan − Ist (nie negativ), „Für Liquidität“ die erwartete Einnahme der Liquiditätsplanung (2.16). „Weitergegeben“ und „Noch umbuchbar“ sind Jahreswerte (`NON_ADDITIVE`).
+   - Die Liquiditätsplanung (2.16) kann im Dialog über „PDF…“ als Monatstabelle mit Gesamtzeile ins Dokumentenarchiv ausgegeben werden.
    - Konten: Anfangssaldo (Vortrag), Soll, Haben und Saldo (Anfangssaldo + Haben − Soll). Die Spalten „erwarteter Kontostand“ und „Differenz“ folgen mit dem Cash-Management (2.13) als Katalogzeilen.
    - Buchungen: alle Buchungen aller Perioden mit Status (offen/abgeschlossen, Storno, storniert); die Buchungsart „Umbuchung“ nennt als Gegenkonto das Konto des zweiten Buchungssatzes.
 
@@ -428,7 +432,7 @@ Meine Kasse/
 | Tabelle | Wesentliche Felder |
 | --- | --- |
 | `users` | id, name, last_name, first_name, address, password_hash, initial_password_hash, must_change_password, password_changed_at |
-| `cost_centers` | id, name, number, valid_from, kind (`STANDARD` / `WITHOUT_PLAN` / `INCOME`), income_mode (`PLAN` / `ACTUAL`, genau bei `INCOME` gesetzt), notes |
+| `cost_centers` | id, name, number, valid_from, kind (`STANDARD` / `WITHOUT_PLAN` / `INCOME`), income_mode (`PLAN` / `ACTUAL`, genau bei `INCOME` gesetzt), always_in_plan_report (nie bei `INCOME`, siehe 2.14), notes |
 | `accounts` | id, name, number, account_type (`CHECKING`, `SAVINGS`, `INVESTMENT`, `RESERVE`), bank_name, owner_name, iban, cash_role (`NONE`, `CENTRAL_PAYMENT`, `OPERATING_FUNDS`; je Rolle höchstens ein Konto) |
 | `booking_control` | id, is_active (genau ein aktiver Datensatz), planning_enabled, current_year, current_month, last_closed_year, last_closed_month |
 | `period_closures` | id, year, month, closed_on, signature |
@@ -461,7 +465,7 @@ Regeln:
 
 | Tabelle | Wesentliche Felder |
 | --- | --- |
-| `cost_center_plans` | id, name, cost_center_id, year, base_budget_cents (Basisansatz, ≥ 0, nach Aktivierung fix), budget_transfer_cents (Projektion aus `BUDGET_TRANSFER`), reserve_carry_in_cents (manuell nur ohne Vorjahresplan, sonst aus dem Vorjahr abgeleitet), reserve_carry_out_cents (berechnet, siehe 2.12) |
+| `cost_center_plans` | id, name, cost_center_id, year, base_budget_cents (Basisansatz, ≥ 0, nach Aktivierung fix), budget_transfer_cents (Projektion aus `BUDGET_TRANSFER`), reserve_carry_in_cents (folgt dem Vorjahresplan, solange nicht von Hand überschrieben; ohne Vorjahresplan manuell), reserve_carry_in_is_manual (Vortrag von Hand überschrieben), reserve_carry_out_cents (berechnet, siehe 2.12) |
 | `monthly_plans` | id, name, cost_center_plan_id, month, plan_cents, reserve_plan_cents (Zuführung), reserve_is_manual (manuell gesetzte Zuführung), plan_mode (wird nicht mehr bedient, bleibt wegen der Signatur erhalten) |
 | `monthly_actuals` | id, name, cost_center_id, year, month, debit_cents, credit_cents, reserve_actual_cents (Entlastung ist) |
 

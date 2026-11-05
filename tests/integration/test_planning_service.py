@@ -196,6 +196,48 @@ def test_base_budget_is_fixed_when_planning_is_active(
     save(planning, world, cost_center=world.cc_b, base=0)
 
 
+def test_base_budget_of_the_following_year_can_be_planned_while_planning_is_active(
+    planning: PlanningService, booking_control: BookingControlService, world: World
+) -> None:
+    booking_control.update(planning_enabled=True, current_year=YEAR, current_month=11)
+
+    planning.save_plan(
+        world.cc_a,
+        YEAR + 1,
+        base_budget_cents=20000,
+        months=months(m01=1000),
+        actor_id=world.actor,
+    )
+    planning.save_plan(
+        world.cc_a,
+        YEAR + 1,
+        base_budget_cents=25000,
+        months=months(m01=1000),
+        actor_id=world.actor,
+    )
+
+    view = planning.get_plan_view(world.cc_a, YEAR + 1)
+    assert view.is_future_year and view.base_editable
+    assert view.base_budget_cents == 25000
+    assert planning.get_plan_view(world.cc_a, YEAR).base_editable is False
+
+
+def test_following_year_base_is_fixed_again_once_it_becomes_the_booking_year(
+    planning: PlanningService, booking_control: BookingControlService, world: World
+) -> None:
+    booking_control.update(planning_enabled=True, current_year=YEAR, current_month=11)
+    planning.save_plan(
+        world.cc_a, YEAR + 1, base_budget_cents=20000, months=[], actor_id=world.actor
+    )
+    booking_control.update(planning_enabled=True, current_year=YEAR + 1, current_month=1)
+
+    with pytest.raises(ValidationError, match="Ansatzumbuchung"):
+        planning.save_plan(
+            world.cc_a, YEAR + 1, base_budget_cents=25000, months=[], actor_id=world.actor
+        )
+    assert planning.get_plan_view(world.cc_a, YEAR + 1).base_editable is False
+
+
 def test_distribution_is_limited_by_the_effective_budget_after_transfers(
     planning: PlanningService,
     booking_control: BookingControlService,

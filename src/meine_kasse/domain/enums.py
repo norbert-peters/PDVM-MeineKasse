@@ -66,6 +66,7 @@ class ReportSource(StrEnum):
     BOOKINGS = "BOOKINGS"
     PLAN_ACTUAL = "PLAN_ACTUAL"
     ACCOUNTS = "ACCOUNTS"
+    INCOME = "INCOME"
 
 
 class FilterOperator(StrEnum):

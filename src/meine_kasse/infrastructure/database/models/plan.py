@@ -25,6 +25,7 @@ class CostCenterPlanModel(IdNameMixin, TimestampMixin, Base):
     budget_transfer_cents: Mapped[int] = mapped_column(Integer, default=0)
     reserve_carry_in_cents: Mapped[int] = mapped_column(Integer, default=0)
     reserve_carry_out_cents: Mapped[int] = mapped_column(Integer, default=0)
+    reserve_carry_in_is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class MonthlyPlanModel(IdNameMixin, TimestampMixin, Base):

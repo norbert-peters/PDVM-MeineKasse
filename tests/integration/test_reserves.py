@@ -251,18 +251,82 @@ def test_carry_in_is_manual_without_a_previous_year_plan(
     assert view.reserve_carry_out_cents == 5000 + 120000
 
 
-def test_carry_in_comes_from_the_previous_year_and_cannot_be_overridden(
+def test_carry_in_follows_the_previous_year_until_it_is_overridden_by_hand(
     planning: PlanningService, world: World
 ) -> None:
     _save(planning, world, year=YEAR - 1, base=60000)
 
     view = planning.get_plan_view(world.cc_a, YEAR)
-    assert view.reserve_carry_in_cents == 60000 and not view.reserve_carry_in_editable
+    assert view.reserve_carry_in_cents == 60000
+    assert view.reserve_carry_in_editable and not view.reserve_carry_in_manual
+    assert view.reserve_carry_in_derivable
 
-    with pytest.raises(ValidationError, match="Vorjahr"):
-        _save(planning, world, carry_in=1)
     _save(planning, world, base=10000, carry_in=60000)
-    assert planning.get_plan_view(world.cc_a, YEAR).reserve_carry_in_cents == 60000
+    assert not planning.get_plan_view(world.cc_a, YEAR).reserve_carry_in_manual
+
+    _save(planning, world, base=10000, carry_in=1000)
+    view = planning.get_plan_view(world.cc_a, YEAR)
+    assert view.reserve_carry_in_cents == 1000 and view.reserve_carry_in_manual
+    assert view.reserve_carry_out_cents == 1000 + 10000
+
+    _save(planning, world, year=YEAR - 1, base=70000)  # Eine Überschreibung bleibt bestehen.
+    assert planning.get_plan_view(world.cc_a, YEAR).reserve_carry_in_cents == 1000
+
+
+def test_carry_in_override_can_be_reset_to_the_previous_year(
+    planning: PlanningService, world: World
+) -> None:
+    _save(planning, world, year=YEAR - 1, base=60000)
+    _save(planning, world, base=10000, carry_in=1000)
+
+    planning.save_plan(
+        world.cc_a,
+        YEAR,
+        base_budget_cents=10000,
+        reserve_carry_in_cents=1000,
+        months=[],
+        actor_id=world.actor,
+        carry_in_automatic=True,
+    )
+
+    view = planning.get_plan_view(world.cc_a, YEAR)
+    assert view.reserve_carry_in_cents == 60000 and not view.reserve_carry_in_manual
+    _save(planning, world, year=YEAR - 1, base=70000)
+    assert planning.get_plan_view(world.cc_a, YEAR).reserve_carry_in_cents == 70000
+
+
+def test_overridden_carry_in_is_fixed_after_january_is_closed(
+    planning: PlanningService, database: Database, world: World
+) -> None:
+    from meine_kasse.infrastructure.database.models import PeriodClosureModel
+
+    _save(planning, world, year=YEAR - 1, base=60000)
+    _save(planning, world, base=10000, carry_in=1000)
+    with database.session_factory() as session:
+        session.add(
+            PeriodClosureModel(
+                year=YEAR,
+                month=1,
+                closed_on=date(YEAR, 1, 31),
+                closed_by_user_id=world.actor,
+                signature="x" * 64,
+            )
+        )
+        session.commit()
+
+    view = planning.get_plan_view(world.cc_a, YEAR)
+    assert not view.reserve_carry_in_editable and view.reserve_carry_in_cents == 1000
+    with pytest.raises(PeriodError, match="vortrag"):
+        _save(planning, world, base=10000, carry_in=2000)
+    with pytest.raises(PeriodError, match="vortrag"):
+        planning.save_plan(
+            world.cc_a,
+            YEAR,
+            base_budget_cents=10000,
+            months=[],
+            actor_id=world.actor,
+            carry_in_automatic=True,
+        )
 
 
 def test_carry_in_cannot_change_after_january_is_closed(

@@ -4,18 +4,22 @@ from pathlib import Path
 
 import pytest
 
-from conftest import World
+from conftest import TODAY, World
 from meine_kasse.application.reporting.pdf_model import RowStyle
 from meine_kasse.application.services.booking_control_service import BookingControlService
 from meine_kasse.application.services.booking_service import BookingService
 from meine_kasse.application.services.document_service import DocumentService
+from meine_kasse.application.services.income_planning import IncomeMonthInput
+from meine_kasse.application.services.master_data_service import MasterDataService
 from meine_kasse.application.services.planning_service import MonthPlanInput, PlanningService
 from meine_kasse.application.services.report_service import ReportService
 from meine_kasse.domain.entities import ReportDefinition, ReportFilter, ReportGroup, ReportSort
 from meine_kasse.domain.enums import (
     BookingType,
+    CostCenterKind,
     DocumentType,
     FilterOperator,
+    IncomeMode,
     ObjectKind,
     ReportSource,
     Side,
@@ -34,7 +38,7 @@ def reports(
     uow_factory: Callable[[], UnitOfWork], planning: PlanningService, tmp_path: Path
 ) -> ReportService:
     documents = DocumentService(uow_factory, ReportlabPdfRenderer(), tmp_path / "Dokumente")
-    return ReportService(uow_factory, planning, documents)
+    return ReportService(uow_factory, planning, documents, today=lambda: TODAY)
 
 
 def book(
@@ -225,6 +229,278 @@ def test_cost_centers_without_plan_are_not_part_of_plan_actual(
     )
 
     assert result.row_count == 0
+
+
+def test_flagged_cost_center_without_plan_shows_its_expenses(
+    reports: ReportService,
+    bookings: BookingService,
+    master_data: MasterDataService,
+    world: World,
+) -> None:
+    master_data.update_cost_center(
+        world.cc_free,
+        number="300",
+        name="Sonstiges",
+        valid_from=date(2026, 1, 1),
+        always_in_plan_report=True,
+        actor_id=world.actor,
+    )
+    book(bookings, world, amount=1000, cost_center=world.cc_free)
+    book(bookings, world, amount=400, cost_center=world.cc_free, text="Mehr")
+
+    result = reports.run(
+        ReportDefinition(
+            "Plan/Ist",
+            ReportSource.PLAN_ACTUAL,
+            ("cost_center", "planning", "month", "debit", "plan", "budget", "remaining_budget"),
+        )
+    )
+
+    assert [row.cells for row in result.rows] == [
+        ("300 Sonstiges", "Ohne Plan", "5", "14,00 €", "0,00 €", "", ""),
+        ("300 Sonstiges", "Ohne Plan", "", "0,00 €", "0,00 €", "", ""),
+    ]
+    assert result.total_row.cells[3:5] == ("14,00 €", "0,00 €")
+
+
+def test_flagged_cost_center_without_plan_and_booking_is_still_listed(
+    reports: ReportService,
+    master_data: MasterDataService,
+    world: World,
+) -> None:
+    master_data.update_cost_center(
+        world.cc_free,
+        number="300",
+        name="Sonstiges",
+        valid_from=date(2026, 1, 1),
+        always_in_plan_report=True,
+        actor_id=world.actor,
+    )
+
+    result = reports.run(
+        ReportDefinition(
+            "Plan/Ist",
+            ReportSource.PLAN_ACTUAL,
+            ("cost_center", "planning", "year", "month", "debit", "plan", "budget"),
+        )
+    )
+
+    assert [row.cells for row in result.rows] == [
+        ("300 Sonstiges", "Ohne Plan", "2026", "", "0,00 €", "0,00 €", ""),
+        ("300 Sonstiges", "Ohne Plan", "2027", "", "0,00 €", "0,00 €", ""),
+    ]
+
+
+def test_empty_rows_can_be_excluded_by_row_kind_filter(
+    reports: ReportService,
+    master_data: MasterDataService,
+    world: World,
+) -> None:
+    master_data.update_cost_center(
+        world.cc_free,
+        number="300",
+        name="Sonstiges",
+        valid_from=date(2026, 1, 1),
+        always_in_plan_report=True,
+        actor_id=world.actor,
+    )
+
+    result = reports.run(
+        ReportDefinition(
+            "Plan/Ist",
+            ReportSource.PLAN_ACTUAL,
+            ("cost_center", "row_kind", "year"),
+            filters=(ReportFilter("row_kind", FilterOperator.NOT_EQUALS, "Ohne Werte"),),
+        )
+    )
+
+    assert result.row_count == 0
+
+
+def test_flagged_cost_center_is_not_listed_before_its_valid_from_year(
+    reports: ReportService,
+    master_data: MasterDataService,
+    world: World,
+) -> None:
+    master_data.update_cost_center(
+        world.cc_free,
+        number="300",
+        name="Sonstiges",
+        valid_from=date(2027, 1, 1),
+        always_in_plan_report=True,
+        actor_id=world.actor,
+    )
+
+    result = reports.run(
+        ReportDefinition("Plan/Ist", ReportSource.PLAN_ACTUAL, ("cost_center", "year"))
+    )
+
+    assert [row.cells for row in result.rows] == [("300 Sonstiges", "2027")]
+
+
+def test_flagged_planned_cost_center_is_listed_without_plan_and_booking(
+    reports: ReportService,
+    master_data: MasterDataService,
+    world: World,
+) -> None:
+    master_data.update_cost_center(
+        world.cc_b,
+        number="200",
+        name="Reisen",
+        valid_from=date(2026, 1, 1),
+        always_in_plan_report=True,
+        actor_id=world.actor,
+    )
+
+    result = reports.run(
+        ReportDefinition(
+            "Plan/Ist",
+            ReportSource.PLAN_ACTUAL,
+            ("cost_center", "planning", "year", "month", "budget", "remaining_budget"),
+        )
+    )
+
+    assert [row.cells for row in result.rows] == [
+        ("200 Reisen", "Mit Plan", "2026", "", "0,00 €", "0,00 €"),
+        ("200 Reisen", "Mit Plan", "2027", "", "0,00 €", "0,00 €"),
+    ]
+
+
+def test_flagged_planned_cost_center_shows_years_with_expenses_but_no_plan(
+    reports: ReportService,
+    bookings: BookingService,
+    master_data: MasterDataService,
+    world: World,
+) -> None:
+    master_data.update_cost_center(
+        world.cc_b,
+        number="200",
+        name="Reisen",
+        valid_from=date(2026, 1, 1),
+        always_in_plan_report=True,
+        actor_id=world.actor,
+    )
+    book(bookings, world, amount=2500, cost_center=world.cc_b)
+    book(bookings, world, amount=700)
+
+    result = reports.run(
+        ReportDefinition(
+            "Plan/Ist",
+            ReportSource.PLAN_ACTUAL,
+            ("cost_center", "planning", "debit"),
+        )
+    )
+
+    assert [row.cells for row in result.rows] == [
+        ("200 Reisen", "Mit Plan", "25,00 €"),
+        ("200 Reisen", "Mit Plan", "0,00 €"),
+    ]
+
+
+def test_plan_report_flag_is_rejected_for_income_cost_centers(
+    master_data: MasterDataService,
+) -> None:
+    with pytest.raises(ValidationError, match="Einnahmen-Kostenstellen"):
+        master_data.create_cost_center(
+            number="900",
+            name="Rente",
+            valid_from=date(2026, 1, 1),
+            kind=CostCenterKind.INCOME,
+            always_in_plan_report=True,
+        )
+
+
+def test_income_source_lists_plan_actual_and_liquidity_per_month(
+    reports: ReportService,
+    planning: PlanningService,
+    bookings: BookingService,
+    master_data: MasterDataService,
+    world: World,
+) -> None:
+    rente = master_data.create_cost_center(
+        number="900",
+        name="Rente",
+        valid_from=date(2026, 1, 1),
+        kind=CostCenterKind.INCOME,
+        income_mode=IncomeMode.PLAN,
+    )
+    zinsen = master_data.create_cost_center(
+        number="910",
+        name="Zinsen",
+        valid_from=date(2026, 1, 1),
+        kind=CostCenterKind.INCOME,
+        income_mode=IncomeMode.ACTUAL,
+    )
+    planning.save_income_plan(
+        rente,
+        YEAR,
+        months=[IncomeMonthInput(5, 100000), IncomeMonthInput(6, 100000)],
+        actor_id=world.actor,
+    )
+    planning.save_income_plan(
+        zinsen, YEAR, months=[IncomeMonthInput(5, 5000)], actor_id=world.actor
+    )
+    book(bookings, world, side=Side.CREDIT, amount=98000, cost_center=rente, text="Mai")
+
+    result = reports.run(
+        ReportDefinition(
+            "Einnahmen",
+            ReportSource.INCOME,
+            (
+                "cost_center",
+                "month",
+                "availability",
+                "plan",
+                "realized",
+                "deviation",
+                "open_expected",
+                "liquidity",
+            ),
+            sort=ReportSort("month"),
+        )
+    )
+
+    assert sorted(row.cells for row in result.rows) == [
+        (
+            "900 Rente",
+            "5",
+            "Nach Plan",
+            "1.000,00 €",
+            "980,00 €",
+            "-20,00 €",
+            "20,00 €",
+            "1.000,00 €",
+        ),
+        (
+            "900 Rente",
+            "6",
+            "Nach Plan",
+            "1.000,00 €",
+            "0,00 €",
+            "-1.000,00 €",
+            "1.000,00 €",
+            "1.000,00 €",
+        ),
+        ("910 Zinsen", "5", "Nur nach Ist", "50,00 €", "0,00 €", "-50,00 €", "50,00 €", "0,00 €"),
+    ]
+    assert result.total_row.cells[3:] == (
+        "2.050,00 €",
+        "980,00 €",
+        "-1.070,00 €",
+        "1.070,00 €",
+        "2.000,00 €",
+    )
+
+
+def test_income_source_can_be_saved_as_a_definition(reports: ReportService, world: World) -> None:
+    reports.save_definition(
+        world.actor,
+        ReportDefinition("Einnahmen", ReportSource.INCOME, ("cost_center", "plan")),
+    )
+
+    saved = reports.list_definitions(world.actor)
+
+    assert [item.data_source for item in saved] == [ReportSource.INCOME]
 
 
 def test_invalid_definition_is_rejected_by_the_service(reports: ReportService) -> None:

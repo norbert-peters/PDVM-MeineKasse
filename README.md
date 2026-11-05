@@ -29,7 +29,8 @@ Umgesetzt (erste Schritte):
 - Wiedereröffnen von Abschlüssen nur in umgekehrter Reihenfolge, mit Pflichtbegründung und dauerhafter Dokumentation (Historie im Abschlussdialog)
 - Anfangssalden (Jahresvortrag) der Konten: editierbar ohne Vorjahr bis zum Abschluss des Januars, sonst aus dem Vorjahr abgeleitet
 - PDF-Ausgabe und Dokumentenarchiv: Jede Tabelle (Buchungen, Stammdaten, Wiedereröffnungen) kann über die Schaltfläche „PDF…“ wie dargestellt (gefiltert, sortiert) ausgegeben werden. Die Dateien liegen im Dokumentenverzeichnis und sind im Menü „Auswertung → Dokumentenarchiv…“ durchsuch-, sortier-, prüf- und öffenbar
-- Auswertungen (Menü „Auswertung → Auswertung…“): eine allgemeine Auswertung über die Datenquellen Buchungen, Plan/Ist und Konten mit Spaltenauswahl, strukturierten Filtern, Sortierung, bis zu drei Gruppenebenen mit Zwischensummen, Gesamtsummen im Kopf, je Anwender speicherbar und als PDF ausgebbar
+- Auswertungen (Menü „Auswertung → Auswertung…“): eine allgemeine Auswertung über die Datenquellen Buchungen, Plan/Ist, Konten und Einnahmen mit Spaltenauswahl, strukturierten Filtern, Sortierung, bis zu drei Gruppenebenen mit Zwischensummen, Gesamtsummen im Kopf, je Anwender speicherbar und als PDF ausgebbar. Kostenstellen mit dem Kennzeichen „In der Plan/Ist-Auswertung immer ausgeben“ (z. B. über die Haushaltsreserve bediente Ausgaben) erscheinen dort auch ohne Plan und ohne Buchung (aktuelles und nächstes Planjahr); über die Spalte „Zeilenart“ lassen sich diese Leerzeilen ein- oder ausblenden
+- Liquiditätsplanung: Der Dialog gibt die Monatsübersicht über „PDF…“ aus
 
 Noch nicht umgesetzt: die Auswertungsspalten „erwarteter Kontostand“ und „Differenz“ (kommen mit dem Cash-Management, Architekturvorgabe 2.13).
 

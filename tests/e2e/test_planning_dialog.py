@@ -513,13 +513,25 @@ def test_carry_in_is_manual_without_a_previous_year_and_derived_otherwise(
     )
     dialog = _dialog(planning, booking_control, world)
 
-    assert dialog.carry_in_edit.isEnabled() is False
+    assert dialog.carry_in_edit.isEnabled() is True
+    assert dialog.carry_in_auto_button.isEnabled() is True
     assert "Vorjahr" in dialog.carry_in_hint.text()
     assert dialog.carry_in_edit.text() == "1.200,00 €"
     assert dialog.carry_out_label.text() == "1.200,00 €"
 
+    dialog.carry_in_edit.setText("100,00")
+    dialog.carry_in_edit.textEdited.emit("100,00")
+    dialog.save_button.click()
+    assert _dialog(planning, booking_control, world).carry_in_edit.text() == "100,00 €"
+
+    dialog.carry_in_auto_button.click()
+    assert dialog.carry_in_edit.text() == "1.200,00 €"
+    dialog.save_button.click()
+    assert _dialog(planning, booking_control, world).carry_in_edit.text() == "1.200,00 €"
+
     dialog.year_spin.setValue(YEAR - 1)
     assert dialog.carry_in_edit.isEnabled() is True
+    assert dialog.carry_in_auto_button.isEnabled() is False
     assert "von Hand" in dialog.carry_in_hint.text()
 
 

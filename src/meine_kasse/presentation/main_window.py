@@ -165,7 +165,7 @@ class MainWindow(QMainWindow):
         PlanningDialog(self._planning, self._booking_control, self._login.user_id, self).exec()
 
     def _open_liquidity(self) -> None:
-        LiquidityDialog(self._planning, self._booking_control, self).exec()
+        LiquidityDialog(self._planning, self._booking_control, self, exporter=self._exporter).exec()
 
     def _open_income_planning(self) -> None:
         IncomePlanningDialog(

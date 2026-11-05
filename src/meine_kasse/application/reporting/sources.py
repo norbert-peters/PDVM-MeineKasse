@@ -7,10 +7,12 @@ entsprechen dem Spaltenkatalog; formatiert wird erst in der Auswertungsmaschine.
 from collections.abc import Sequence
 from typing import Any
 
+from meine_kasse.application.services.income_planning import build_income_view
 from meine_kasse.application.services.planning_service import PlanView
 from meine_kasse.domain.entities import Account, CostCenter
-from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind, Side
+from meine_kasse.domain.enums import AccountType, BookingType, CostCenterKind, IncomeMode, Side
 from meine_kasse.domain.repositories import UnitOfWork
+from meine_kasse.domain.services.liquidity_rules import expected_income
 
 Row = dict[str, Any]
 PlanTarget = tuple[CostCenter, int]
@@ -28,6 +30,12 @@ ACCOUNT_TYPE_NAMES = {
     AccountType.RESERVE: "Rückstellung",
 }
 OPEN, CLOSED = "offen", "abgeschlossen"
+PLANNED, UNPLANNED = "Mit Plan", "Ohne Plan"
+WITH_VALUES, NO_VALUES = "Mit Werten", "Ohne Werte"
+INCOME_MODE_NAMES = {
+    IncomeMode.PLAN: "Nach Plan",
+    IncomeMode.ACTUAL: "Nur nach Ist",
+}
 
 
 def _label(item: CostCenter | Account) -> str:
@@ -106,21 +114,37 @@ def booking_rows(uow: UnitOfWork) -> list[Row]:
     return rows
 
 
-def plan_targets(uow: UnitOfWork) -> list[PlanTarget]:
-    """Kostenstellen mit Plan und ihre Planjahre. Die Planansichten folgen außerhalb der UoW."""
+def plan_targets(uow: UnitOfWork, current_year: int) -> list[PlanTarget]:
+    """Kostenstellen mit Plan und ihre Planjahre. Die Planansichten folgen außerhalb der UoW.
+
+    Kostenstellen mit dem Kennzeichen „immer ausgeben“ kommen zusätzlich mit allen Jahren, in
+    denen es Ist-Buchungen gibt, auch ohne Plan (Art `STANDARD` ohne Jahresplan, `WITHOUT_PLAN`),
+    und stets mit dem aktuellen und dem nächsten Planjahr (ab ihrem Gültigkeitsjahr), auch ohne
+    Plan und Buchung. Solche Leerzeilen tragen die Zeilenart „Ohne Werte“ und sind filterbar.
+    """
+    actual_years = _actual_years(uow)
     targets: list[PlanTarget] = []
     for cost_center in uow.cost_centers.list_all():
+        years: set[int] = set()
         if cost_center.kind is CostCenterKind.STANDARD:
-            targets.extend(
-                (cost_center, plan.year) for plan in uow.plans.plans_of_cost_center(cost_center.id)
+            years.update(plan.year for plan in uow.plans.plans_of_cost_center(cost_center.id))
+        if cost_center.always_in_plan_report and cost_center.kind is not CostCenterKind.INCOME:
+            years.update(actual_years.get(cost_center.id, ()))
+            years.update(
+                year
+                for year in (current_year, current_year + 1)
+                if cost_center.valid_from.year <= year
             )
+        targets.extend((cost_center, year) for year in sorted(years))
     return targets
 
 
 def plan_actual_rows(views: Sequence[tuple[CostCenter, PlanView]]) -> list[Row]:
     rows: list[Row] = []
     for cost_center, view in views:
+        planned = cost_center.kind is CostCenterKind.STANDARD
         cumulative = 0
+        year_rows = len(rows)
         for month in view.months:
             cumulative += month.movement_cents
             values = (
@@ -135,6 +159,8 @@ def plan_actual_rows(views: Sequence[tuple[CostCenter, PlanView]]) -> list[Row]:
             rows.append(
                 {
                     "cost_center": _label(cost_center),
+                    "planning": PLANNED if planned else UNPLANNED,
+                    "row_kind": WITH_VALUES,
                     "year": view.year,
                     "month": month.month,
                     "status": CLOSED if month.is_closed else OPEN,
@@ -143,14 +169,85 @@ def plan_actual_rows(views: Sequence[tuple[CostCenter, PlanView]]) -> list[Row]:
                     "movement": month.movement_cents,
                     "plan": month.plan_cents,
                     "deviation": month.deviation_cents,
-                    "budget": view.effective_budget_cents,
-                    "remaining_budget": view.effective_budget_cents - cumulative,
+                    "budget": view.effective_budget_cents if planned else None,
+                    "remaining_budget": (
+                        view.effective_budget_cents - cumulative if planned else None
+                    ),
                     "reserve_contribution": month.reserve_plan_cents,
                     "reserve_release": month.reserve_release_cents,
-                    "reserve_balance": month.reserve_balance_cents,
+                    "reserve_balance": month.reserve_balance_cents if planned else None,
+                }
+            )
+        if len(rows) == year_rows and cost_center.always_in_plan_report:
+            # Gekennzeichnete Kostenstelle ohne Plan und ohne Ist: eine Zeile ohne Monat.
+            rows.append(
+                {
+                    "cost_center": _label(cost_center),
+                    "planning": PLANNED if planned else UNPLANNED,
+                    "row_kind": NO_VALUES,
+                    "year": view.year,
+                    "month": None,
+                    "status": CLOSED if view.year_closed else OPEN,
+                    "debit": 0,
+                    "credit": 0,
+                    "movement": 0,
+                    "plan": 0,
+                    "deviation": 0,
+                    "budget": view.effective_budget_cents if planned else None,
+                    "remaining_budget": view.effective_budget_cents if planned else None,
+                    "reserve_contribution": 0,
+                    "reserve_release": 0,
+                    "reserve_balance": 0 if planned else None,
                 }
             )
     return rows
+
+
+def income_rows(uow: UnitOfWork) -> list[Row]:
+    """Einnahmen-Kostenstellen je Planmonat mit erwarteter und gebuchter Einnahme."""
+    actual_years = _actual_years(uow)
+    rows: list[Row] = []
+    for cost_center in uow.cost_centers.list_all():
+        if cost_center.kind is not CostCenterKind.INCOME:
+            continue
+        years = {plan.year for plan in uow.plans.plans_of_cost_center(cost_center.id)}
+        years.update(actual_years.get(cost_center.id, ()))
+        for year in sorted(years):
+            view = build_income_view(uow, cost_center, year)
+            for month in view.months:
+                if not (month.plan_cents or month.debit_cents or month.credit_cents):
+                    continue
+                rows.append(
+                    {
+                        "cost_center": _label(cost_center),
+                        "year": year,
+                        "month": month.month,
+                        "status": CLOSED if month.is_closed else OPEN,
+                        "availability": INCOME_MODE_NAMES[view.mode],
+                        "plan": month.plan_cents,
+                        "debit": month.debit_cents,
+                        "credit": month.credit_cents,
+                        "realized": month.realized_cents,
+                        "deviation": month.deviation_cents,
+                        "open_expected": max(0, month.plan_cents - month.realized_cents),
+                        "liquidity": expected_income(
+                            view.mode,
+                            month.plan_cents,
+                            month.realized_cents,
+                            closed=month.is_closed,
+                        ),
+                        "passed_on": view.passed_on_cents,
+                        "free": view.free_cents,
+                    }
+                )
+    return rows
+
+
+def _actual_years(uow: UnitOfWork) -> dict[str, set[int]]:
+    years: dict[str, set[int]] = {}
+    for actual in uow.plans.list_actuals():
+        years.setdefault(actual.cost_center_id, set()).add(actual.year)
+    return years
 
 
 def account_rows(uow: UnitOfWork) -> list[Row]:
